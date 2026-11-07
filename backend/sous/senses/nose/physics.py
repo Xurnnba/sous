@@ -178,11 +178,15 @@ class Simulator:
             hold=None if s["hold"] is None else r.uniform(*s["hold"]),
             decay_tau=None if s["decay_tau"] is None else r.uniform(*s["decay_tau"]),
             dtemp=r.uniform(*s["dtemp"]), drh=r.uniform(*s["drh"]), env_tau=s["env_tau"])
+        # Hold the stimulus until the pipeline has a clean-air baseline for this location: during the
+        # initial warm-up, and again after a move (the pipeline re-baselines on relocation).
         delay = 0.0
         if self.p is not None:
             cal = getattr(self.p, "calibrator", None)
             if cal is not None and cal.status != "ready":
                 delay = cal.samples_remaining + 4.0
+            elif getattr(self.p, "location", self.location) != self.location:
+                delay = getattr(self.p, "rebase_samples", 6) + 4.0
         self.onset_t = self._t + delay
 
     @property
@@ -265,6 +269,7 @@ def generate_windows(n: int, rng: random.Random, windows_per_episode: int = 3,
             sim = Simulator(None, seed=rng.getrandbits(32), physics=SensorPhysics.sample(rng), single_channel=single)
             cal = Calibrator(warmup_samples=warmup_samples)
             sim.set_scenario("nominal")
+            sim.location = s["location"]          # warm up where the scenario happens (no location jump)
             # warm-up and a little clean air so the calibrator is ready before onset
             pre = warmup_samples + rng.randint(2, 12)
             hist: list[dict] = []
@@ -279,7 +284,10 @@ def generate_windows(n: int, rng: random.Random, windows_per_episode: int = 3,
             dur = 100 if s["hold"] is None else int(s["hold"][1] + 3 * (s["decay_tau"][1] if s["decay_tau"] else 0) + 10)
             dur = min(max(dur, 40), 110)
             onset = sim.onset_t
-            cut_at = sorted(rng.uniform(onset + 3, onset + dur) for _ in range(windows_per_episode))
+            # one window always in the first seconds after onset (where detection must happen), the
+            # rest anywhere in the episode (plateau, decay)
+            cut_at = sorted([rng.uniform(onset + 3, onset + 10)]
+                            + [rng.uniform(onset + 3, onset + dur) for _ in range(windows_per_episode - 1)])
             ci = 0
             for _ in range(dur):
                 rd = sim.step()

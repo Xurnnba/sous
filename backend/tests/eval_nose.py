@@ -84,6 +84,29 @@ def main() -> int:
             sc = anomalies[0]["data"]["single_channel"] if anomalies else None
             print(f"{scen:<18}{seed:>5}  {'/'.join(sorted(expect)):<34}{fired:<18}{lat:>8}  single_channel={sc} {'ok' if ok else 'FAIL'}")
 
+    print("\n== sequential demo on one pipeline (relocation, clear, no flapping) ==")
+    plan = [("spoilage_walkin", 60), ("stop", 5), ("nominal", 25), ("burning", 70), ("cleaning", 70),
+            ("door_open", 60), ("fryer_oil", 90), ("spoilage_protein", 60)]
+    want = ["spoilage_produce", "voc_clear", "burning", "voc_clear", "cleaning", "voc_clear", "oil_degraded", "voc_clear",
+            "spoilage_protein"]
+    events = []
+    p = NosePipeline(lambda e: events.append(dict(e, _t=sim._t)), model=model)
+    sim = Simulator(p, seed=11)
+    for scen, secs in plan:
+        sim.set_scenario(scen)
+        for _ in range(secs):
+            sim.step()
+            p.tick()
+    got = [e["kind"] for e in events if e["kind"] not in ("device_connected", "relocated")]
+    for e in events:
+        print(f"  t={e['_t']:>4.0f}  {e['kind']:<17} {e['severity']:<5} {e['data'].get('urgency', '-'):<5} {e['detail'][:80]}")
+    ok = got == want
+    if not ok:
+        failures += 1
+    print(f"  sequence {'ok' if ok else 'FAIL'}: got {got}")
+    cal = p.snapshot()["calibration"]
+    print(f"  calibration after run: rh_slope={cal['rh_slope']} fitted={cal['rh_slope_fitted']} quality={cal['quality']}")
+
     snap = p.snapshot()
     print("\nsnapshot keys:", sorted(snap.keys()))
     print("calibration:", snap["calibration"])

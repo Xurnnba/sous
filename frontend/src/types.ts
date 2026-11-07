@@ -252,6 +252,8 @@ export type SensorReadingBody = {
 
 export type SoundClip = { id: string; name: string; kind: string; emoji: string; hint: string; available: boolean; url: string };
 
+export type HostsResponse = { port: number; hosts: { ip: string; url: string }[] };
+
 export type SoundtrackTruth = {
   duration_s?: number;
   events: { t: number; kind: string; clip?: string; label?: string }[];

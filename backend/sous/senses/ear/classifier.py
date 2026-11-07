@@ -54,13 +54,16 @@ CFG = {
     "few_thr": 0.74,         # nearest-neighbour similarity needed for a taught label
     "few_margin": 0.03,      # vote margin over background / other labels
     "confirm": {},           # consecutive hops required per kind; merging already handles duplicates
-    "aug_snr_db": (12.0, 6.0, 0.0),
+    "aug_snr_db": (15.0, 8.0),
+    "teach_min_db_above_floor": 10.0,     # only learn windows clearly louder than the room
+    "zs_confirm": {"fryer_alarm": 2, "phone_ring": 2},   # zero-shot needs 2 hops for long tonal sounds
+    "gain_cap_skip": 40.0,                # a window needing this much gain is a transient in silence: skip
     "zero_shot": True,
 }
 
 ZERO_SHOT = {
     "fryer_alarm": {"Alarm": 1.0, "Beep, bleep": 1.0, "Buzzer": 0.8, "Smoke detector, smoke alarm": 1.0,
-                    "Microwave oven": 0.5, "Alarm clock": 0.8, "Fire alarm": 1.0, "Whistle": 0.5},
+                    "Microwave oven": 0.5, "Alarm clock": 0.8, "Fire alarm": 1.0, "Whistle": 0.6, "Whistling": 0.5},
     "door_chime": {"Doorbell": 1.0, "Ding": 0.9, "Ding-dong": 1.0, "Chime": 0.9, "Bell": 0.6,
                    "Wind chime": 0.5, "Bicycle bell": 0.6},
     "ticket_burst": {"Printer": 1.0, "Typewriter": 0.5, "Typing": 0.3, "Tools": 0.4, "Power tool": 0.3},
@@ -70,12 +73,13 @@ ZERO_SHOT = {
     "speech": {"Speech": 1.0, "Conversation": 1.0, "Shout": 0.8, "Yell": 0.8},
     "frying": {"Sizzle": 1.0, "Frying (food)": 1.0},
 }
-ZERO_SHOT_THRESHOLD = {"fryer_alarm": 0.35, "door_chime": 0.30, "ticket_burst": 0.30, "clatter": 0.40,
+ZERO_SHOT_THRESHOLD = {"fryer_alarm": 0.30, "door_chime": 0.30, "ticket_burst": 0.30, "clatter": 0.40,
                        "phone_ring": 0.40, "speech": 0.45, "frying": 0.35}
 HOLD_S = {"fryer_alarm": 6.0, "door_chime": 3.0, "ticket_burst": 5.0, "clatter": 4.0, "phone_ring": 6.0}
 CONTINUATION_GAP_S = 1.6
 LABELS = ["fryer_alarm", "door_chime", "ticket_burst", "clatter", "phone_ring", "speech", "frying"]
 EVENT_LABELS = ["fryer_alarm", "door_chime", "ticket_burst", "clatter", "phone_ring"]
+NOISE_CLASSES = {"White noise", "Pink noise", "Static", "Silence", "Noise", "Hum", "Mains hum", "Hiss"}
 PRETTY = {"fryer_alarm": "Fryer alarm", "door_chime": "Door chime", "ticket_burst": "Ticket printer",
           "clatter": "Clatter", "phone_ring": "Phone ringing", "speech": "Voices", "frying": "Frying",
           BACKGROUND: "Room background"}
@@ -146,7 +150,7 @@ class EarClassifier:
         self.active = False
         self._last_fire: dict[str, float] = {}
         self._last_match: dict[str, float] = {}
-        self._streak: tuple[str, int] = ("", 0)
+        self._recent_hits: deque[tuple[float, str]] = deque(maxlen=12)
         self._bursts: deque[tuple[float, str]] = deque(maxlen=50)
         self.last_scores: dict[str, float] = {}
         self.last_top: list[tuple[str, float]] = []
@@ -193,11 +197,11 @@ class EarClassifier:
             self.floor_db += 0.5 * (db - self.floor_db)
         else:
             self.floor_db += 0.01 * (db - self.floor_db)
+        self.floor_db = max(self.floor_db, -75.0)      # digital silence must not make everything "loud"
         self.active = db > self.floor_db + ACTIVITY_DB_ABOVE_FLOOR and db > -55
         if not self.active:
             self.speech_fraction *= 0.95
             self._learn_noise(win)
-            self._streak = ("", 0)
             return
         gain = min(10 ** ((TARGET_RMS_DB - db) / 20), 60.0)
         x = np.clip(win * gain, -1, 1)
@@ -222,23 +226,34 @@ class EarClassifier:
 
         if self.teaching:
             if self.t <= self.teaching["until"]:
-                self._learn_example(x, gain, emb)
+                noisy = self.last_top[0][0] in NOISE_CLASSES
+                if db - self.floor_db >= CFG["teach_min_db_above_floor"] and not noisy:
+                    self._learn_example(x, gain, emb)
                 return
             self._finish_teach()
+        if gain >= CFG["gain_cap_skip"]:
+            return                          # transient in near-silence; wait for a fuller window
 
         sims = self.protos.similarities(emb)
         self.last_sims = sims
+        if self.last_top[0][0] in NOISE_CLASSES and zs.get("speech", 0) < 0.3:
+            # steady noise (fan, hiss, static) is the room, never an event; remember it as background
+            if self.windows_processed % 2 == 0:
+                self.protos.add(BACKGROUND, emb, persist=(self.windows_processed % 50 == 0))
+            return
         fired, how, conf = self._decide(emb, zs, sims)
         if fired is None:
             if self.windows_processed % 5 == 0 and zs.get("speech", 0) < 0.3:
                 self.protos.add(BACKGROUND, emb, persist=(self.windows_processed % 50 == 0))
-            self._streak = ("", 0)
             return
 
-        # temporal confirmation for long sounds
+        # temporal confirmation for long sounds (zero-shot decisions need more)
         need = CFG["confirm"].get(fired, 1)
-        self._streak = (fired, self._streak[1] + 1) if self._streak[0] == fired else (fired, 1)
-        if self._streak[1] < need:
+        if how == "zero-shot":
+            need = max(need, CFG["zs_confirm"].get(fired, 1))
+        self._recent_hits.append((self.t, fired))
+        hits = sum(1 for t, k in self._recent_hits if k == fired and self.t - t <= 2.0)
+        if hits < need:
             return
 
         last_match = self._last_match.get(fired, -1e9)

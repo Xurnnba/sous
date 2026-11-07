@@ -1,38 +1,30 @@
 import type { SousApi } from "../lib/api";
-import type {
-  Action,
-  AnomalyKind,
-  Event,
-  Ingredient,
-  MenuItem,
-  Order,
-  SmellScenario,
-  State,
-  WsMessage,
-} from "../types";
+import { getMicId, getMicLocation } from "../lib/device";
+import { countItems, DEFAULT_LABELS } from "../lib/normalise";
+import type { Action, Event, Ingredient, Item, Items, MenuItem, Mic, Order, Smell, SmellScenario, SoundClip, State, Urgency, WsMessage } from "../types";
 
 /**
- * In-browser stand-in for the FastAPI backend. Activated with `?mock=1`.
- * Emits the same WsMessage shapes the real `/ws` does, once per second, and
- * implements every POST in CONTRACT.md against local state.
+ * In-browser stand-in for the FastAPI backend (CONTRACT v2). Activated with `?mock=1`.
+ * Emits the same WsMessage shapes the real `/ws` does, once per second, and implements
+ * every REST call in CONTRACT.md against local state.
  *
  * Storyline (wall-clock seconds since start, at speed 1x):
- *   0s   kitchen opens, four orders already on the board, hearing live via soundtrack
- *   ~15s nose: VOC ratio starts climbing in the walk-in (spoilage scenario)
- *   ~25s nose anomaly confirmed -> agent hides guac-heavy items, speaks
- *   avocado burns fast; stockout forecast -> hide "Avocado Toast", promote substitute, draft reorder
- *   new orders every ~6s (every ~3s in rush), hearing events every 4-7s
+ *   0s   kitchen opens, four orders on the board, two mics listening (this device + a phone at the front)
+ *   ~15s nose: 4-step fingerprint drifts in the walk-in (spoilage_walkin scenario)
+ *   ~25s nose anomaly -> item "Check the walk-in bottom shelf" (now), Sous hides guac, speaks
+ *   avocado burns fast; stockout forecast -> item + hide "Avocado Toast", promote substitute, draft reorder
+ *   hearing events every 4-7 s become items (merged by kind+location); new orders every ~6 s (~3 s in rush)
  */
 
 const MENU: MenuItem[] = [
-  { id: "m-avo-toast", name: "Avocado Toast", price: 12, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "avocado", qty: 1 }, { name: "sourdough", qty: 2 }], tags: ["vegetarian", "popular"] },
-  { id: "m-guac", name: "Guac & Chips", price: 9, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "avocado", qty: 2 }, { name: "tortilla chips", qty: 1 }], tags: ["vegan", "shareable"] },
-  { id: "m-burger", name: "Smash Burger", price: 15, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "beef patty", qty: 2 }, { name: "brioche bun", qty: 1 }, { name: "cheddar", qty: 1 }], tags: ["popular"] },
-  { id: "m-fries", name: "Hand-cut Fries", price: 6, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "potatoes", qty: 1 }, { name: "fryer oil", qty: 0.05 }], tags: ["vegan", "side"] },
-  { id: "m-chicken", name: "Crispy Chicken Sandwich", price: 14, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "chicken thigh", qty: 1 }, { name: "brioche bun", qty: 1 }, { name: "fryer oil", qty: 0.08 }], tags: ["popular", "spicy"] },
-  { id: "m-salad", name: "Little Gem Salad", price: 11, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "little gem", qty: 1 }, { name: "cheddar", qty: 0.5 }], tags: ["vegetarian", "gluten-free"] },
-  { id: "m-tomato-toast", name: "Heirloom Tomato Toast", price: 11, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "tomatoes", qty: 1 }, { name: "sourdough", qty: 2 }], tags: ["vegan", "seasonal"] },
-  { id: "m-shake", name: "Salted Caramel Shake", price: 8, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "ice cream", qty: 2 }], tags: ["dessert"] },
+  { id: "m-avo-toast", name: "Avocado Toast", emoji: "🥑", price: 12, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "avocado", qty: 1 }, { name: "sourdough", qty: 2 }], tags: ["vegetarian", "popular"] },
+  { id: "m-guac", name: "Guac & Chips", emoji: "🫔", price: 9, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "avocado", qty: 2 }, { name: "tortilla chips", qty: 1 }], tags: ["vegan", "shareable"] },
+  { id: "m-burger", name: "Smash Burger", emoji: "🍔", price: 15, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "beef patty", qty: 2 }, { name: "brioche bun", qty: 1 }, { name: "cheddar", qty: 1 }], tags: ["popular"] },
+  { id: "m-fries", name: "Hand-cut Fries", emoji: "🍟", price: 6, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "potatoes", qty: 1 }, { name: "fryer oil", qty: 0.05 }], tags: ["vegan", "side"] },
+  { id: "m-chicken", name: "Crispy Chicken Sandwich", emoji: "🍗", price: 14, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "chicken thigh", qty: 1 }, { name: "brioche bun", qty: 1 }, { name: "fryer oil", qty: 0.08 }], tags: ["popular", "spicy"] },
+  { id: "m-salad", name: "Little Gem Salad", emoji: "🥗", price: 11, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "little gem", qty: 1 }, { name: "cheddar", qty: 0.5 }], tags: ["vegetarian", "gluten-free"] },
+  { id: "m-tomato-toast", name: "Heirloom Tomato Toast", emoji: "🍅", price: 11, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "tomatoes", qty: 1 }, { name: "sourdough", qty: 2 }], tags: ["vegan", "seasonal"] },
+  { id: "m-shake", name: "Salted Caramel Shake", emoji: "🥤", price: 8, available: true, discount_pct: 0, reason: null, substitute_for: null, ingredients: [{ name: "ice cream", qty: 2 }], tags: ["dessert"] },
 ];
 
 const INVENTORY: Ingredient[] = [
@@ -53,26 +45,49 @@ const INVENTORY: Ingredient[] = [
 const CHANNELS: Order["channel"][] = ["doordash", "doordash", "ubereats", "ubereats", "phone", "walkin"];
 const PREFIX: Record<Order["channel"], string> = { doordash: "D", ubereats: "U", phone: "P", walkin: "W" };
 
-const SCENARIO_KIND: Record<string, AnomalyKind> = {
-  spoilage_walkin: "spoilage",
-  fryer_oil: "oil_degraded",
-  burning: "burning",
-  cleaning: "cleaning",
-};
-const SCENARIO_LOCATION: Record<string, string> = {
-  spoilage_walkin: "walk-in",
-  fryer_oil: "fry-station",
-  burning: "fry-station",
-  cleaning: "walk-in",
-};
-const SCENARIO_PEAK: Record<string, number> = { spoilage_walkin: 2.6, fryer_oil: 1.9, burning: 3.4, cleaning: 2.1 };
+// --- nose: 4-step heater sweep signatures (baseline/gas per step; 1.0 = clean air) -----------------
+const SMELL_CLASSES = ["nominal", "spoilage_produce", "spoilage_protein", "burning", "oil_degraded", "cleaning"] as const;
+type SmellClass = (typeof SMELL_CLASSES)[number];
 
-const HEARING_LINES: { kind: string; label: string; detail: string; severity: Event["severity"]; data: () => Record<string, unknown> }[] = [
-  { kind: "ticket_burst", label: "Ticket printer burst", detail: "4 tickets in 6 s — expo is about to get buried", severity: "warn", data: () => ({ peak_hz: 3200 + rnd(400), flatness: 0.12 + Math.random() * 0.05, rms: 0.31 + Math.random() * 0.1, count: 4 }) },
-  { kind: "fryer_alarm", label: "Fryer timer", detail: "Basket 2 beeping for 9 s with no response", severity: "alert", data: () => ({ peak_hz: 2800 + rnd(150), flatness: 0.04, rms: 0.42, duration_s: 9 }) },
-  { kind: "door_chime", label: "Front door chime", detail: "Walk-in guest at the counter", severity: "info", data: () => ({ peak_hz: 1760, flatness: 0.08, rms: 0.18 }) },
-  { kind: "noise_spike", label: "Noise spike", detail: "Dropped sheet pan near the dish pit", severity: "info", data: () => ({ peak_hz: 540 + rnd(300), flatness: 0.61, rms: 0.74 }) },
-  { kind: "speech", label: "Line call-out", detail: "\"Behind! Hot pan!\"", severity: "info", data: () => ({ peak_hz: 420, flatness: 0.22, rms: 0.27 }) },
+const SCENARIO_META: Record<Exclude<SmellScenario, "stop" | "nominal">, { cls: SmellClass | "door_open"; location: string; sig: number[]; urgency: "now" | "next" | "today" | "info"; title: string; detail: string; speak: string | null }> = {
+  spoilage_walkin: { cls: "spoilage_produce", location: "walk-in", sig: [1.55, 2.05, 2.4, 1.85], urgency: "next", title: "Check the walk-in bottom shelf", detail: "Ethanol/ester fingerprint rising near the avocados. Sous pulled Guac & Chips from the apps.", speak: "Heads up — I'm smelling something turning in the walk-in, near the avocados. I've pulled Guac and Chips from the apps. Can someone check that bottom shelf?" },
+  spoilage_protein: { cls: "spoilage_protein", location: "walk-in", sig: [1.35, 1.7, 2.55, 2.3], urgency: "now", title: "Pull and check the protein in the walk-in", detail: "Amine/sulfur fingerprint — consistent with meat or fish turning. Smash Burger and Chicken Sandwich held.", speak: "Something protein is turning in the walk-in. I'm holding burgers and chicken until someone checks the top shelf." },
+  fryer_oil: { cls: "oil_degraded", location: "fry-station", sig: [1.2, 1.5, 1.9, 1.6], urgency: "today", title: "Change the fryer oil before dinner", detail: "Aldehyde profile at the fry station says the oil is past its window. Fries will taste off within the hour.", speak: "The fryer oil is reading degraded. Fries will taste off within the hour — I'd swap it before dinner rush." },
+  burning: { cls: "burning", location: "fry-station", sig: [2.8, 3.4, 3.1, 2.2], urgency: "now", title: "Something is burning at the fry station", detail: "Sharp smoke fingerprint on all four heater steps. Check basket two.", speak: "Something is burning at the fry station. Check basket two right now." },
+  cleaning: { cls: "cleaning", location: "walk-in", sig: [0.72, 0.8, 1.9, 2.4], urgency: "info", title: "Cleaning cycle in the walk-in", detail: "Chlorine/surfactant profile — not spoilage. Spoilage alerts suppressed for 20 min.", speak: "I smell sanitizer in the walk-in. I'll treat that as a cleaning cycle and hold off on spoilage alerts for a bit." },
+  door_open: { cls: "door_open", location: "walk-in", sig: [1.04, 1.07, 1.1, 1.06], urgency: "info", title: "Walk-in door is open", detail: "Small uniform shift across steps with a humidity jump — door open, not spoilage.", speak: null },
+};
+
+const CLASS_SIG: Record<SmellClass, number[]> = {
+  nominal: [1, 1, 1, 1],
+  spoilage_produce: SCENARIO_META.spoilage_walkin.sig,
+  spoilage_protein: SCENARIO_META.spoilage_protein.sig,
+  burning: SCENARIO_META.burning.sig,
+  oil_degraded: SCENARIO_META.fryer_oil.sig,
+  cleaning: SCENARIO_META.cleaning.sig,
+};
+
+// --- ears -------------------------------------------------------------------------------------------
+const SCORE_KEYS = ["fryer_alarm", "door_chime", "ticket_burst", "clatter", "phone_ring", "speech", "frying"] as const;
+const AUDIOSET_IDLE: [string, number][][] = [
+  [["Speech", 0.31], ["Inside, small room", 0.22], ["Frying (food)", 0.14]],
+  [["Inside, small room", 0.28], ["Sizzle", 0.19], ["Dishes, pots, and pans", 0.11]],
+  [["Frying (food)", 0.26], ["Speech", 0.2], ["Water tap, faucet", 0.09]],
+];
+const HEARING_LINES: { kind: string; label: string; heard_as: string; detail: string; severity: Event["severity"]; urgency: Urgency; title: (loc: string) => string; itemDetail: string; speak: string | null; auto: Item["auto"] }[] = [
+  { kind: "ticket_burst", label: "Ticket printer burst", heard_as: "Printer", detail: "4 tickets in 6 s — expo is about to get buried", severity: "warn", urgency: "next", title: () => "Fire the two burgers first", itemDetail: "Four tickets printed in six seconds. The DoorDash dasher for D-106 is three minutes out.", speak: "Four tickets just hit. Fire the two burgers first — the dasher for D-one-oh-six is three minutes out.", auto: { type: "fire_now", summary: "Fired D-106 early (dasher 3 min out)" } },
+  { kind: "fryer_alarm", label: "Fryer alarm", heard_as: "Beep, bleep", detail: "Basket 2 beeping for 9 s with no response", severity: "alert", urgency: "now", title: () => "Pull fryer basket two", itemDetail: "The fryer timer has been beeping for nine seconds with nobody answering it.", speak: "Fryer two has been beeping for ten seconds. Someone pull that basket.", auto: null },
+  { kind: "door_chime", label: "Front door chime", heard_as: "Doorbell", detail: "Walk-in guest at the counter", severity: "info", urgency: "today", title: () => "Guest at the counter", itemDetail: "The front door chimed and nobody is at the register.", speak: null, auto: null },
+  { kind: "phone_ring", label: "Phone ringing", heard_as: "Telephone bell ringing", detail: "Landline ringing at the pass", severity: "warn", urgency: "next", title: () => "Answer the phone — likely an order", itemDetail: "The landline has rung four times. Phone orders are 18% of lunch.", speak: "Phone's ringing at the pass.", auto: null },
+  { kind: "clatter", label: "Clatter", heard_as: "Dishes, pots, and pans", detail: "Dropped sheet pan near the dish pit", severity: "info", urgency: "later", title: () => "Check the dish pit", itemDetail: "Something metal hit the floor near the dish pit. Probably fine.", speak: null, auto: null },
+];
+
+const SOUND_CLIPS: SoundClip[] = [
+  { id: "ticket_printer", name: "Ticket printer", kind: "ticket_burst", emoji: "🧾", hint: "An order printed off the POS", available: true, url: "/api/sounds/ticket_printer.wav" },
+  { id: "fryer_alarm", name: "Fryer alarm", kind: "fryer_alarm", emoji: "🍟", hint: "Fryer timer going off", available: true, url: "/api/sounds/fryer_alarm.wav" },
+  { id: "door_chime", name: "Door chime", kind: "door_chime", emoji: "🔔", hint: "Someone at the front door", available: true, url: "/api/sounds/door_chime.wav" },
+  { id: "phone_ring", name: "Phone ringing", kind: "phone_ring", emoji: "📞", hint: "Landline order coming in", available: true, url: "/api/sounds/phone_ring.wav" },
+  { id: "plates_crash", name: "Plates crash", kind: "clatter", emoji: "🍽️", hint: "Something dropped", available: true, url: "/api/sounds/plates_crash.wav" },
 ];
 
 const ORDER_ITEMS: string[][] = [
@@ -89,9 +104,14 @@ const ORDER_ITEMS: string[][] = [
 function rnd(n: number): number {
   return Math.round(Math.random() * n);
 }
-
 function uid(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
+}
+function softmax(scores: number[], temp = 1): number[] {
+  const m = Math.max(...scores);
+  const ex = scores.map((s) => Math.exp((s - m) / temp));
+  const sum = ex.reduce((a, b) => a + b, 0);
+  return ex.map((e) => e / sum);
 }
 
 export type MockBackend = { api: SousApi; start: () => void; stop: () => void };
@@ -108,49 +128,90 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
   let scenarioAnnounced = false;
   let avocadoHidden = false;
   let reorderDrafted = false;
-  let hearingSource: State["senses"]["hearing"]["source"] = "soundtrack";
+  let smellItemId: string | null = null;
 
-  let state!: State; // assigned right after fresh() is defined (mkOrder reads state?.rush, undefined during the first fresh())
+  let state!: State;
+
+  function mkMic(mic: string, location: string, source: Mic["source"]): Mic {
+    return {
+      mic,
+      location,
+      source,
+      model: "yamnet",
+      level_db: -38,
+      floor_db: -46,
+      active: true,
+      speech_fraction: 0.18,
+      scores: Object.fromEntries(SCORE_KEYS.map((k) => [k, k === "speech" ? 0.22 : k === "frying" ? 0.15 : 0.03 + Math.random() * 0.04])),
+      top: AUDIOSET_IDLE[0],
+      taught: { _background: 0.91 },
+      teaching: null,
+      windows: 0,
+    };
+  }
 
   function fresh(): State {
     const menu = MENU.map((m) => ({ ...m, ingredients: m.ingredients.map((i) => ({ ...i })), tags: [...m.tags] }));
     const inventory = INVENTORY.map((i) => ({ ...i }));
-    const trace: State["senses"]["smell"]["trace"] = [];
-    for (let i = -60; i < 0; i++) trace.push({ t: i, ratio: 1 + (Math.random() - 0.5) * 0.04 });
+    const trace: Smell["trace"] = [];
+    for (let i = -60; i < 0; i++) {
+      const ratios = CLASS_SIG.nominal.map((r) => r + (Math.random() - 0.5) * 0.04);
+      trace.push({ t: i, ratio: Number((ratios.reduce((a, b) => a + b, 0) / 4).toFixed(3)), ratios });
+    }
     const orders: Order[] = [
       mkOrder("doordash", 0, ["Smash Burger", "Hand-cut Fries"], -6, "cooking"),
       mkOrder("ubereats", 0, ["Avocado Toast", "Salted Caramel Shake"], -4, "fire"),
       mkOrder("phone", 0, ["Crispy Chicken Sandwich", "Hand-cut Fries"], -2, "queued"),
       mkOrder("walkin", 0, ["Little Gem Salad"], -1, "queued"),
     ];
+    const mics = [mkMic(getMicId(), getMicLocation(), "mic"), mkMic("phone-2a", "front", "mic")];
+    mics[1].level_db = -44;
+    mics[1].floor_db = -52;
+    mics[1].speech_fraction = 0.41;
+    mics[1].top = AUDIOSET_IDLE[1];
     return {
       clock: new Date().toISOString(),
       sim_minutes: 0,
       rush: false,
+      speed,
       orders,
       inventory,
       menu,
+      metrics: { orders_served: 0, stockouts_prevented: 0, est_refunds_avoided_usd: 0, est_waste_saved_usd: 0 },
       senses: {
-        hearing: { active: true, source: hearingSource, noise_db: -34, stress: 0.22, recent: [] },
+        hearing: { active: true, source: "mic", noise_db: -34, stress: 0.22, recent: [] },
+        ears: {
+          active: true,
+          model: "yamnet",
+          mics,
+          prototypes: [
+            { label: "_background", examples: 24, name: "Room background" },
+            { label: "door_chime", examples: 8, name: "Door chime" },
+          ],
+          labels: DEFAULT_LABELS,
+        },
         smell: {
           device: "replay",
-          sensor_id: "bme688-01",
+          sensor_id: "sim-bme688",
           location: "walk-in",
-          baseline_ohm: 182000,
-          gas_ohm: 181200,
-          ratio: 1.0,
-          temp_c: 3.8,
-          rh: 71,
           status: "nominal",
+          calibration: { status: "calibrated", quality: 0.93, baseline_ohm: [182000, 151000, 118000, 94000], rh_slope: -0.012, samples: 412 },
+          ratios: [1, 1, 1, 1],
+          fingerprint: [0, 0, 0, 0],
+          probs: { nominal: 0.96, spoilage_produce: 0.01, spoilage_protein: 0.01, burning: 0.0, oil_degraded: 0.01, cleaning: 0.01 },
           anomaly: null,
           scenario: null,
           trace,
+          model: { name: "gbdt-fingerprint", features: 22, trained_on: 6000, accuracy: 0.94 },
+          single_channel: false,
+          temp_c: 3.8,
+          rh: 71,
         },
       },
+      items: { open: [], recent_closed: [], counts: { now: 0, next: 0, today: 0, later: 0 }, total_created: 0 },
       voice: { last_line: "", muted: false },
       actions: [],
-      metrics: { orders_served: 0, stockouts_prevented: 0, est_refunds_avoided_usd: 0, est_waste_saved_usd: 0 },
-      providers: { llm: "rules", tts: "browser" },
+      providers: { llm: "rules", tts: "browser", ears: "ready", nose: "replay" },
     };
   }
 
@@ -166,7 +227,7 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
       items: names.map((n) => ({ name: n, qty: 1 })),
       placed_at: placed,
       promised_at: promised,
-      fire_at: promised - prep - 3, // 3 min buffer before the promised time
+      fire_at: promised - prep - 3,
       prep_minutes: prep,
       status,
       dasher_eta_min: channel === "doordash" || channel === "ubereats" ? prep + 4 + rnd(6) : null,
@@ -176,9 +237,7 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
 
   function pushEvent(ev: Omit<Event, "id" | "t">): Event {
     const full: Event = { ...ev, id: uid("ev"), t: new Date().toISOString() };
-    if (full.sense === "hearing") {
-      state.senses.hearing.recent = [full, ...state.senses.hearing.recent].slice(0, 10);
-    }
+    if (full.sense === "hearing") state.senses.hearing.recent = [full, ...state.senses.hearing.recent].slice(0, 10);
     emit({ type: "event", event: full });
     return full;
   }
@@ -196,6 +255,59 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
     emit({ type: "speak", text, id: uid("sp") });
   }
 
+  // --- items -----------------------------------------------------------------
+  function recount() {
+    state.items.counts = countItems(state.items.open);
+  }
+
+  function upsertItem(partial: Omit<Item, "id" | "created" | "updated" | "status" | "count"> & { mergeKey?: string }): Item {
+    const now = new Date().toISOString();
+    const existing = state.items.open.find((i) => i.kind === partial.kind && i.sense === partial.sense && (i.location ?? "") === (partial.location ?? ""));
+    if (existing) {
+      existing.count += 1;
+      existing.updated = now;
+      existing.detail = partial.detail;
+      existing.evidence = partial.evidence;
+      if (partial.auto) existing.auto = partial.auto;
+      // repeats escalate: a third door chime in a row is "next", not "today"
+      if (existing.count >= 3 && existing.urgency === "today") existing.urgency = "next";
+      recount();
+      emit({ type: "item", change: "updated", item: { ...existing } });
+      return existing;
+    }
+    const { mergeKey: _k, ...rest } = partial;
+    void _k;
+    const item: Item = { ...rest, id: uid("it"), created: now, updated: now, status: "open", count: 1 };
+    state.items.open = [item, ...state.items.open];
+    state.items.total_created += 1;
+    recount();
+    emit({ type: "item", change: "added", item: { ...item } });
+    return item;
+  }
+
+  function closeItem(id: string, status: Item["status"], by: NonNullable<Item["closed_by"]>) {
+    const idx = state.items.open.findIndex((i) => i.id === id);
+    if (idx < 0) return;
+    const [item] = state.items.open.splice(idx, 1);
+    item.status = status;
+    item.closed = new Date().toISOString();
+    item.closed_by = by;
+    state.items.recent_closed = [item, ...state.items.recent_closed].slice(0, 20);
+    if (smellItemId === id) smellItemId = null;
+    recount();
+    emit({ type: "item", change: "closed", item: { ...item } });
+  }
+
+  function expireItems() {
+    const now = Date.now();
+    for (const it of [...state.items.open]) {
+      const age = (now - new Date(it.updated).getTime()) / 1000;
+      const ttl = it.urgency === "later" ? 60 : it.urgency === "today" ? 120 : it.urgency === "next" ? 180 : 300;
+      if (age > ttl && it.sense !== "smell") closeItem(it.id, "expired", "timeout");
+    }
+  }
+
+  // --- menu actions ---------------------------------------------------------------
   function hideItem(id: string, reason: string) {
     const m = state.menu.find((x) => x.id === id);
     if (!m || !m.available) return;
@@ -216,110 +328,133 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
     pushAction({ type: "menu_restore", summary: `Restored "${m.name}"`, payload: { menu_id: id }, by });
   }
 
+  // --- nose -----------------------------------------------------------------------
   function startScenario(name: SmellScenario) {
+    const s = state.senses.smell;
     if (name === "stop" || name === "nominal") {
       scenario = null;
-      state.senses.smell.scenario = name === "nominal" ? "nominal" : null;
-      if (state.senses.smell.status === "anomaly") {
-        pushEvent({ sense: "smell", kind: "voc_clear", label: "VOC cleared", detail: `${state.senses.smell.location} back to baseline`, severity: "info", data: { ratio: state.senses.smell.ratio } });
-      }
-      state.senses.smell.status = "nominal";
-      state.senses.smell.anomaly = null;
+      s.scenario = name === "nominal" ? "nominal" : null;
+      if (s.status === "anomaly") pushEvent({ sense: "smell", kind: "voc_clear", label: "VOC cleared", detail: `${s.location} back to baseline`, severity: "info", data: { ratios: s.ratios } });
+      s.status = "nominal";
+      s.anomaly = null;
+      if (smellItemId) closeItem(smellItemId, "done", "sous");
       scenarioAnnounced = false;
       return;
     }
     scenario = name;
     scenarioStartTick = tick;
     scenarioAnnounced = false;
-    state.senses.smell.scenario = name;
-    state.senses.smell.location = SCENARIO_LOCATION[name];
-    state.senses.smell.anomaly = null;
-    state.senses.smell.status = "nominal";
-    if (name === "fryer_oil" || name === "burning") {
-      state.senses.smell.temp_c = 38;
-      state.senses.smell.rh = 32;
-    } else {
-      state.senses.smell.temp_c = 3.8;
-      state.senses.smell.rh = 71;
-    }
+    s.scenario = name;
+    s.location = SCENARIO_META[name].location;
+    s.anomaly = null;
+    s.status = "nominal";
+    if (smellItemId) closeItem(smellItemId, "done", "sous");
+    const hot = name === "fryer_oil" || name === "burning";
+    s.temp_c = hot ? 38 : 3.8;
+    s.rh = hot ? 32 : name === "door_open" ? 84 : 71;
   }
 
   function stepSmell() {
     const s = state.senses.smell;
-    let target = 1;
-    if (scenario) {
+    let target = CLASS_SIG.nominal;
+    if (scenario && scenario !== "stop" && scenario !== "nominal") {
+      const meta = SCENARIO_META[scenario];
       const age = tick - scenarioStartTick;
-      const peak = SCENARIO_PEAK[scenario];
-      // ramp over ~12 s, hold, then slowly decay for cleaning
       const ramp = Math.min(1, age / 12);
-      target = 1 + (peak - 1) * ramp;
-      if (scenario === "cleaning" && age > 30) target = 1 + (peak - 1) * Math.max(0, 1 - (age - 30) / 25);
+      let k = ramp;
+      if (scenario === "cleaning" && age > 30) k = Math.max(0, 1 - (age - 30) / 25);
+      if (scenario === "door_open" && age > 20) k = Math.max(0, 1 - (age - 20) / 10);
+      target = meta.sig.map((v) => 1 + (v - 1) * k);
     }
-    const prev = s.ratio ?? 1;
-    const ratio = prev + (target - prev) * 0.25 + (Math.random() - 0.5) * 0.03;
-    s.ratio = Math.max(0.8, Number(ratio.toFixed(3)));
-    s.gas_ohm = s.baseline_ohm ? Math.round(s.baseline_ohm / s.ratio) : null;
-    const t = s.trace.length ? s.trace[s.trace.length - 1].t + 1 : 0;
-    s.trace = [...s.trace, { t, ratio: s.ratio }].slice(-180);
-    if (s.temp_c !== null) s.temp_c = Number((s.temp_c + (Math.random() - 0.5) * 0.1).toFixed(1));
-    if (s.rh !== null) s.rh = Math.round(s.rh + (Math.random() - 0.5) * 0.6);
+    const prev = s.ratios ?? CLASS_SIG.nominal;
+    const ratios = prev.map((p, i) => Math.max(0.5, Number((p + (target[i] - p) * 0.25 + (Math.random() - 0.5) * 0.03).toFixed(3))));
+    s.ratios = ratios;
+    const mean = ratios.reduce((a, b) => a + b, 0) / 4;
+    s.ratio = Number(mean.toFixed(3));
+    s.fingerprint = ratios.map((r) => Number((Math.log(r) - Math.log(ratios[1])).toFixed(3)));
+    s.gas_ohm = s.calibration.baseline_ohm ? Math.round(s.calibration.baseline_ohm[1] / ratios[1]) : null;
+    const t = s.trace.length ? Number((s.trace[s.trace.length - 1].t + 1).toFixed(1)) : 0;
+    s.trace = [...s.trace, { t, ratio: s.ratio, ratios }].slice(-180);
+    if (typeof s.temp_c === "number") s.temp_c = Number((s.temp_c + (Math.random() - 0.5) * 0.1).toFixed(1));
+    if (typeof s.rh === "number") s.rh = Math.round(s.rh + (Math.random() - 0.5) * 0.6);
 
-    if (scenario && s.ratio > 1.35 && s.status !== "anomaly") {
-      const kind = SCENARIO_KIND[scenario];
+    // classifier: negative squared distance in log-space to each class signature
+    const logR = ratios.map((r) => Math.log(r));
+    const dists = SMELL_CLASSES.map((c) => {
+      const sig = CLASS_SIG[c].map((r) => Math.log(r));
+      return -sig.reduce((acc, v, i) => acc + (v - logR[i]) ** 2, 0) * 14;
+    });
+    const p = softmax(dists);
+    s.probs = Object.fromEntries(SMELL_CLASSES.map((c, i) => [c, Number(p[i].toFixed(3))]));
+    const winner = SMELL_CLASSES[p.indexOf(Math.max(...p))];
+    const conf = Math.max(...p);
+    const deviation = Math.max(...ratios.map((r) => Math.abs(Math.log(r))));
+
+    const meta = scenario && scenario !== "stop" && scenario !== "nominal" ? SCENARIO_META[scenario] : null;
+    const isDoor = meta?.cls === "door_open";
+    const anomalous = deviation > 0.12 && (winner !== "nominal" || isDoor);
+    if (anomalous && s.status !== "anomaly") {
+      const kind = isDoor ? "door_open" : winner;
       s.status = "anomaly";
-      s.anomaly = { kind, magnitude: Number((s.ratio - 1).toFixed(2)), since: new Date().toISOString() };
-      pushEvent({ sense: "smell", kind: "voc_rise", label: "VOC rising", detail: `ratio ${s.ratio.toFixed(2)} at ${s.location}, derivative +0.08/s`, severity: "warn", data: { ratio: s.ratio, location: s.location } });
+      s.anomaly = { kind, confidence: Number(conf.toFixed(2)), urgency: meta?.urgency ?? "next", since: new Date().toISOString() };
+      pushEvent({ sense: "smell", kind, label: `Nose: ${kind.replace(/_/g, " ")}`, detail: `fingerprint ${ratios.map((r) => r.toFixed(2)).join(" / ")} at ${s.location}`, severity: meta?.urgency === "now" ? "alert" : "warn", data: { ratios, probs: s.probs, location: s.location, confidence: conf } });
     } else if (s.status === "anomaly" && s.anomaly) {
-      s.anomaly.magnitude = Number((s.ratio - 1).toFixed(2));
-      if (s.ratio < 1.15) {
+      s.anomaly.confidence = Number(conf.toFixed(2));
+      if (!isDoor && winner !== "nominal") s.anomaly.kind = winner; // classifier firms up as the fingerprint develops
+      if (deviation < 0.06) {
         s.status = "nominal";
         s.anomaly = null;
-        pushEvent({ sense: "smell", kind: "voc_clear", label: "VOC cleared", detail: `${s.location} back to baseline`, severity: "info", data: { ratio: s.ratio } });
+        pushEvent({ sense: "smell", kind: "voc_clear", label: "VOC cleared", detail: `${s.location} back to baseline`, severity: "info", data: { ratios } });
+        if (smellItemId) closeItem(smellItemId, "done", "sous");
+        scenarioAnnounced = false;
       }
     }
 
-    if (scenario && s.status === "anomaly" && !scenarioAnnounced && s.ratio > 1.8) {
+    if (meta && s.status === "anomaly" && !scenarioAnnounced && deviation > 0.3 * Math.max(...meta.sig.map((v) => Math.abs(Math.log(v))))) {
       scenarioAnnounced = true;
-      const kind = SCENARIO_KIND[scenario];
-      if (kind === "spoilage") {
-        pushEvent({ sense: "smell", kind: "spoilage", label: "Spoilage signature", detail: "Ethanol/ester profile consistent with produce turning in the walk-in", severity: "alert", data: { ratio: s.ratio, location: s.location, kind } });
+      let auto: Item["auto"] = null;
+      if (meta.cls === "spoilage_produce") {
         const avo = state.inventory.find((i) => i.name === "avocado");
         if (avo) avo.freshness = "turning";
-        const tom = state.inventory.find((i) => i.name === "tomatoes");
-        if (tom) tom.freshness = "watch";
-        pushEvent({ sense: "agent", kind: "decision", label: "Fused nose + inventory", detail: "Avocado is 4 days in, VOCs rising at its shelf. Pulling guac before a refund does.", severity: "warn", data: { confidence: 0.82 } });
         hideItem("m-guac", "Walk-in VOC anomaly; avocado freshness flagged by nose");
         state.metrics.stockouts_prevented += 1;
         state.metrics.est_refunds_avoided_usd += 54;
         state.metrics.est_waste_saved_usd += 38;
-        speak("Heads up — I'm smelling something turning in the walk-in, near the avocados. I've pulled Guac and Chips from the apps. Can someone check that bottom shelf?");
-      } else if (kind === "oil_degraded") {
-        pushEvent({ sense: "smell", kind: "oil_degraded", label: "Fryer oil degraded", detail: "Aldehyde profile rising at fry-station; oil past its change window", severity: "warn", data: { ratio: s.ratio, location: s.location, kind } });
+        auto = { type: "menu_hide", summary: "Hid Guac & Chips on DoorDash and Uber Eats" };
+      } else if (meta.cls === "spoilage_protein") {
+        hideItem("m-burger", "Protein spoilage signature in walk-in");
+        hideItem("m-chicken", "Protein spoilage signature in walk-in");
+        auto = { type: "menu_hide", summary: "Held Smash Burger and Chicken Sandwich" };
+      } else if (meta.cls === "oil_degraded") {
         const oil = state.inventory.find((i) => i.name === "fryer oil");
         if (oil) oil.freshness = "turning";
-        pushAction({ type: "ask_human", summary: "Fryer oil smells degraded — change before dinner?", payload: { station: "fry-station", ratio: s.ratio }, by: "rules" });
-        speak("The fryer oil is reading degraded. Fries will taste off within the hour — I'd swap it before dinner rush.");
-      } else if (kind === "burning") {
-        pushEvent({ sense: "smell", kind: "burning", label: "Burning detected", detail: "Sharp VOC spike at fry-station; smoke profile", severity: "alert", data: { ratio: s.ratio, location: s.location, kind } });
-        speak("Something is burning at the fry station. Check basket two right now.");
-      } else if (kind === "cleaning") {
-        pushEvent({ sense: "smell", kind: "cleaning", label: "Cleaning cycle", detail: "Chlorine/surfactant profile in walk-in — not spoilage, suppressing alerts for 20 min", severity: "info", data: { ratio: s.ratio, location: s.location, kind } });
-        speak("I smell sanitizer in the walk-in. I'll treat that as a cleaning cycle and hold off on spoilage alerts for a bit.");
+        pushAction({ type: "ask_human", summary: "Fryer oil smells degraded — change before dinner?", payload: { station: "fry-station" }, by: "rules" });
       }
+      const urgency: Urgency = meta.urgency === "info" ? "later" : meta.urgency;
+      const item = upsertItem({
+        title: meta.title,
+        detail: meta.detail,
+        urgency,
+        sense: "smell",
+        kind: meta.cls,
+        auto,
+        evidence: { location: s.location, confidence: Number(conf.toFixed(2)), probs: s.probs, fingerprint: s.fingerprint, ratios, single_channel: false },
+        speak: meta.speak,
+        location: s.location,
+      });
+      smellItemId = item.id;
+      if (meta.speak) speak(meta.speak);
     }
   }
 
+  // --- orders / inventory -----------------------------------------------------------
   function stepOrders(dtMin: number) {
     const now = state.sim_minutes;
     for (const o of state.orders) {
       if (o.status === "picked_up") continue;
       if (o.dasher_eta_min !== null && o.status !== "ready") o.dasher_eta_min = Math.max(0, o.dasher_eta_min - dtMin);
-      if (o.status === "queued" && now >= o.fire_at) {
-        o.status = "fire";
-      }
-      if (o.status === "fire" && now >= o.fire_at + 1.2) {
-        o.status = "cooking";
-      }
+      if (o.status === "queued" && now >= o.fire_at) o.status = "fire";
+      if (o.status === "fire" && now >= o.fire_at + 1.2) o.status = "cooking";
       if (o.status === "cooking" && now >= o.fire_at + o.prep_minutes) {
         o.status = "ready";
         pushEvent({ sense: "orders", kind: "ready", label: `${o.id} ready`, detail: o.items.map((i) => i.name).join(", "), severity: "info", data: { order_id: o.id } });
@@ -329,18 +464,15 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
         state.metrics.orders_served += 1;
         pushEvent({ sense: "orders", kind: "picked_up", label: `${o.id} picked up`, detail: o.channel === "walkin" ? "Handed to guest" : "Handed to driver", severity: "info", data: { order_id: o.id } });
       }
-      // expected ready time: cooking orders finish at fire_at + prep; others start no earlier than now
       const expectedReady = o.status === "cooking" ? o.fire_at + o.prep_minutes : Math.max(now, o.fire_at) + o.prep_minutes;
       const slack = o.promised_at - expectedReady;
       o.late_risk = o.status === "ready" || o.status === "picked_up" ? "low" : slack < 0 ? "high" : slack < 2 ? "med" : "low";
-      // Dasher will be waiting at the door before the food is ready -> pull the ticket forward.
       if (o.status === "queued" && o.dasher_eta_min !== null && o.dasher_eta_min <= o.prep_minutes + 1 && now < o.fire_at) {
         o.status = "fire";
         o.fire_at = now;
         pushAction({ type: "fire_now", summary: `Fire ${o.id} now — ${o.channel === "doordash" ? "dasher" : "courier"} is ${Math.round(o.dasher_eta_min)} min out`, payload: { order_id: o.id, dasher_eta_min: Math.round(o.dasher_eta_min) }, by: "rules" });
       }
     }
-    // keep newest first, max 24
     state.orders = state.orders.filter((o) => o.status !== "picked_up" || now - o.promised_at < 8).slice(0, 24);
   }
 
@@ -354,8 +486,7 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
     const avo = state.inventory.find((i) => i.name === "avocado");
     if (avo && !avocadoHidden && avo.minutes_to_stockout !== null && avo.minutes_to_stockout <= 8) {
       avocadoHidden = true;
-      pushEvent({ sense: "orders", kind: "late", label: "Stockout forecast", detail: `Avocado hits zero in ~${avo.minutes_to_stockout} min at current burn; 3 queued orders need it`, severity: "warn", data: { ingredient: "avocado", minutes: avo.minutes_to_stockout } });
-      pushEvent({ sense: "agent", kind: "decision", label: "Protect the storefront", detail: "Hide Avocado Toast before it 86es mid-order; promote Tomato Toast as the swap.", severity: "warn", data: { confidence: 0.91 } });
+      pushEvent({ sense: "orders", kind: "stockout", label: "Stockout forecast", detail: `Avocado hits zero in ~${avo.minutes_to_stockout} min at current burn; 3 queued orders need it`, severity: "warn", data: { ingredient: "avocado", minutes: avo.minutes_to_stockout } });
       hideItem("m-avo-toast", "Avocado forecast to stock out in under 10 min");
       const tt = state.menu.find((m) => m.id === "m-tomato-toast");
       if (tt) {
@@ -363,10 +494,20 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
         tt.discount_pct = 15;
         tt.reason = "Promoted while Avocado Toast is unavailable";
         pushAction({ type: "substitute", summary: `Promoting "${tt.name}" in place of Avocado Toast (15% off)`, payload: { menu_id: tt.id, substitute_for: "m-avo-toast", discount_pct: 15 }, by: "rules" });
-        pushAction({ type: "menu_discount", summary: `15% off "${tt.name}"`, payload: { menu_id: tt.id, discount_pct: 15 }, by: "rules" });
       }
       state.metrics.stockouts_prevented += 1;
       state.metrics.est_refunds_avoided_usd += 36;
+      upsertItem({
+        title: "Avocados run out in 8 min — restock or 86",
+        detail: "Sous hid Avocado Toast on both apps and is pushing Tomato Toast at 15% off. A reorder draft is waiting for approval.",
+        urgency: "next",
+        sense: "orders",
+        kind: "stockout",
+        auto: { type: "menu_hide", summary: "Hid Avocado Toast · promoted Tomato Toast −15%" },
+        evidence: { ingredient: "avocado", minutes_to_stockout: avo.minutes_to_stockout, on_hand: avo.on_hand, burn_rate_per_min: Number((avo.burn_rate_per_min * rushMult).toFixed(2)) },
+        speak: "Avocados are about to run out. I've hidden Avocado Toast on DoorDash and Uber Eats and I'm pushing the Tomato Toast instead.",
+        location: "walk-in",
+      });
       speak("Avocados are about to run out. I've hidden Avocado Toast on DoorDash and Uber Eats and I'm pushing the Tomato Toast instead.");
     }
     if (avo && !reorderDrafted && avocadoHidden) {
@@ -374,44 +515,84 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
       pushAction({
         type: "reorder_draft",
         summary: "Reorder draft: 2 cases avocado (48 ea), Sysco, next-morning",
-        payload: {
-          supplier: "Sysco",
-          deliver_by: "tomorrow 07:00",
-          lines: [
-            { name: "avocado", qty: 48, unit: "ea", note: "2 cases, Hass, stage 3 ripeness" },
-            { name: "tomatoes", qty: 24, unit: "ea", note: "heirloom mix for Tomato Toast demand" },
-          ],
-          est_cost_usd: 118.4,
-          status: "draft — needs manager approval",
-        },
+        payload: { supplier: "Sysco", deliver_by: "tomorrow 07:00", lines: [{ name: "avocado", qty: 48, unit: "ea", note: "2 cases, Hass, stage 3 ripeness" }, { name: "tomatoes", qty: 24, unit: "ea", note: "heirloom mix for Tomato Toast demand" }], est_cost_usd: 118.4, status: "draft — needs manager approval" },
         by: "rules",
       });
     }
   }
 
-  function stepHearing() {
+  // --- ears ---------------------------------------------------------------------------
+  function hearingEvent(line: (typeof HEARING_LINES)[number], mic: Mic, how: "zero-shot" | "taught" | "injected") {
+    const confidence = Number((how === "injected" ? 1 : 0.55 + Math.random() * 0.4).toFixed(2));
+    const db = Number((mic.floor_db + 14 + Math.random() * 12).toFixed(1));
+    mic.scores = { ...mic.scores, [line.kind]: Math.min(0.98, 0.45 + Math.random() * 0.4) };
+    mic.top = [[line.heard_as, Number((0.4 + Math.random() * 0.4).toFixed(2))], ["Inside, small room", 0.2], ["Speech", 0.12]];
+    mic.level_db = db;
+    pushEvent({
+      sense: "hearing",
+      kind: line.kind,
+      label: how === "injected" ? `${line.label} (injected)` : line.label,
+      detail: line.detail,
+      severity: line.severity,
+      data: { mic: mic.mic, location: mic.location, how, confidence, heard_as: line.heard_as, db, floor_db: mic.floor_db, top: mic.top, zero_shot: mic.scores, taught: mic.taught },
+    });
+    upsertItem({
+      title: line.title(mic.location),
+      detail: line.itemDetail,
+      urgency: line.urgency,
+      sense: "hearing",
+      kind: line.kind,
+      auto: line.auto,
+      evidence: { mic: mic.mic, location: mic.location, how, confidence, heard_as: line.heard_as, db },
+      speak: line.speak,
+      location: mic.location,
+    });
+    if (line.speak && (line.kind !== "ticket_burst" || state.rush)) speak(line.speak);
+  }
+
+  function stepEars() {
+    const ears = state.senses.ears;
     const h = state.senses.hearing;
-    if (!h.active) {
-      h.noise_db = -60;
-      h.stress = Math.max(0, h.stress - 0.02);
-      return;
+    const base = state.rush ? -26 : -36;
+    for (const [i, mic] of ears.mics.entries()) {
+      mic.windows += 4;
+      mic.level_db = Number(Math.max(-60, Math.min(-6, mic.level_db + (base - 4 * i - mic.level_db) * 0.3 + (Math.random() - 0.5) * 6)).toFixed(1));
+      mic.floor_db = Number((mic.floor_db + ((mic.level_db - 10) - mic.floor_db) * 0.02).toFixed(1));
+      mic.speech_fraction = Number(Math.max(0, Math.min(1, mic.speech_fraction + (Math.random() - 0.5) * 0.06)).toFixed(2));
+      for (const k of SCORE_KEYS) {
+        const rest = k === "speech" ? mic.speech_fraction : k === "frying" ? 0.15 : 0.04;
+        mic.scores[k] = Number(Math.max(0, (mic.scores[k] ?? rest) + (rest - (mic.scores[k] ?? rest)) * 0.35 + (Math.random() - 0.5) * 0.02).toFixed(3));
+      }
+      if (tick % 5 === i) mic.top = AUDIOSET_IDLE[(tick + i) % AUDIOSET_IDLE.length];
+      if (mic.teaching) {
+        mic.teaching.remaining_s = Math.max(0, mic.teaching.remaining_s - 1);
+        mic.teaching.examples += 2;
+        if (mic.teaching.remaining_s === 0) {
+          const { label, examples } = mic.teaching;
+          const proto = ears.prototypes.find((p) => p.label === label);
+          const name = ears.labels.find((l) => l.id === label)?.name ?? label;
+          if (proto) proto.examples += examples;
+          else ears.prototypes.push({ label, examples, name });
+          mic.taught = { ...mic.taught, [label]: 0.97 };
+          mic.teaching = null;
+          pushEvent({ sense: "hearing", kind: "taught", label: `Learned "${name}"`, detail: `${examples} examples from ${mic.mic} at ${mic.location}`, severity: "info", data: { mic: mic.mic, location: mic.location, label, examples, how: "taught" } });
+        }
+      }
     }
-    const base = state.rush ? -22 : -34;
-    h.noise_db = Math.max(-60, Math.min(0, base + (Math.random() - 0.5) * 8));
+    h.active = ears.mics.some((m) => m.active);
+    h.noise_db = ears.mics[0]?.level_db ?? -60;
     const activeTickets = state.orders.filter((o) => o.status !== "picked_up" && o.status !== "ready").length;
     const target = Math.min(1, 0.15 + activeTickets * 0.06 + (h.noise_db + 40) / 80);
     h.stress = Number((h.stress + (target - h.stress) * 0.2).toFixed(2));
+
     sinceHearing += 1;
     const gap = state.rush ? 3 : 5;
-    if (sinceHearing >= gap + rnd(2)) {
+    if (sinceHearing >= gap + rnd(2) && ears.mics.length) {
       sinceHearing = 0;
       const pick = HEARING_LINES[Math.floor(Math.random() * HEARING_LINES.length)];
-      pushEvent({ sense: "hearing", kind: pick.kind, label: pick.label, detail: pick.detail, severity: pick.severity, data: pick.data() });
-      if (pick.kind === "fryer_alarm") {
-        speak("Fryer two has been beeping for ten seconds. Someone pull that basket.");
-      } else if (pick.kind === "ticket_burst" && state.rush) {
-        speak("Four tickets just hit. Fire the two burgers first — the dasher for D-one-oh-six is three minutes out.");
-      }
+      const mic = pick.kind === "door_chime" || pick.kind === "phone_ring" ? ears.mics[ears.mics.length - 1] : ears.mics[0];
+      const taught = ears.prototypes.some((p) => p.label === pick.kind);
+      hearingEvent(pick, mic, taught ? "taught" : "zero-shot");
     }
   }
 
@@ -427,7 +608,6 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
     const o = mkOrder(channel, state.sim_minutes, names, 0);
     state.orders = [o, ...state.orders].slice(0, 24);
     pushEvent({ sense: "orders", kind: "placed", label: `${o.id} placed`, detail: `${names.join(", ")} via ${channel}`, severity: "info", data: { order_id: o.id, channel } });
-    // deduct recipe-level inventory immediately so the forecast reacts
     for (const n of names) {
       const m = state.menu.find((x) => x.name === n);
       m?.ingredients.forEach((ing) => {
@@ -439,24 +619,24 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
 
   function step() {
     tick += 1;
-    const dtMin = 0.35 * speed; // each real second advances ~21 s of kitchen time at 1x
+    const dtMin = 0.35 * speed;
     state.sim_minutes = Number((state.sim_minutes + dtMin).toFixed(2));
     state.clock = new Date().toISOString();
+    state.speed = speed;
     if (tick === 15 && scenario === null && state.senses.smell.scenario === null) startScenario("spoilage_walkin");
-    if (tick === 3) {
-      pushEvent({ sense: "smell", kind: "device_connected", label: "Replay source connected", detail: "No board on serial/http — replaying recorded trace via POST /api/sensor/reading", severity: "info", data: { device: "replay", sensor_id: "bme688-01" } });
-    }
-    if (tick === 2) speak("Sous is online. Ears and nose are live — four tickets on the board, walk-in reads nominal.");
+    if (tick === 3) pushEvent({ sense: "smell", kind: "device_connected", label: "Replay source connected", detail: "No board on serial/http — replaying synthetic sweeps via POST /api/sensor/reading", severity: "info", data: { device: "replay", sensor_id: "sim-bme688" } });
+    if (tick === 2) speak("Sous is online. Two mics listening, nose calibrated — four tickets on the board, walk-in reads nominal.");
     stepSmell();
     stepOrders(dtMin);
     stepInventory(dtMin);
-    stepHearing();
+    stepEars();
     maybeNewOrder();
+    expireItems();
     emit({ type: "snapshot", state: snapshot() });
   }
 
   function snapshot(): State {
-    // shallow-clone top levels so React sees new references each tick
+    const s = state.senses.smell;
     return {
       ...state,
       orders: state.orders.map((o) => ({ ...o, items: [...o.items] })),
@@ -464,8 +644,10 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
       menu: state.menu.map((m) => ({ ...m })),
       senses: {
         hearing: { ...state.senses.hearing, recent: [...state.senses.hearing.recent] },
-        smell: { ...state.senses.smell, trace: [...state.senses.smell.trace], anomaly: state.senses.smell.anomaly ? { ...state.senses.smell.anomaly } : null },
+        ears: { ...state.senses.ears, mics: state.senses.ears.mics.map((m) => ({ ...m, scores: { ...m.scores }, top: m.top.map((t) => [...t] as [string, number]), taught: { ...m.taught }, teaching: m.teaching ? { ...m.teaching } : null })), prototypes: state.senses.ears.prototypes.map((p) => ({ ...p })) },
+        smell: { ...s, trace: [...s.trace], ratios: s.ratios ? [...s.ratios] : null, probs: s.probs ? { ...s.probs } : null, anomaly: s.anomaly ? { ...s.anomaly } : null, calibration: { ...s.calibration } },
       },
+      items: { ...state.items, open: state.items.open.map((i) => ({ ...i })), recent_closed: state.items.recent_closed.map((i) => ({ ...i })), counts: { ...state.items.counts } } as Items,
       voice: { ...state.voice },
       actions: [...state.actions],
       metrics: { ...state.metrics },
@@ -474,7 +656,7 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
   }
 
   const api: SousApi = {
-    health: async () => ({ ok: true, providers: state.providers, smell_device: state.senses.smell.device }),
+    health: async () => ({ ok: true, providers: state.providers, smell_device: state.senses.smell.device, mics: state.senses.ears.mics.length }),
     getState: async () => snapshot(),
     control: async (body) => {
       if (body.rush !== undefined) {
@@ -492,10 +674,13 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
       scenarioAnnounced = false;
       avocadoHidden = false;
       reorderDrafted = false;
+      smellItemId = null;
       orderSeq = { doordash: 104, ubereats: 33, phone: 7, walkin: 12 };
       const muted = state.voice.muted;
+      const prototypes = state.senses.ears.prototypes; // reset keeps ear calibration
       state = fresh();
       state.voice.muted = muted;
+      state.senses.ears.prototypes = prototypes;
       emit({ type: "snapshot", state: snapshot() });
     },
     restoreMenuItem: async (id) => {
@@ -510,28 +695,46 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
         }
         avocadoHidden = false;
         reorderDrafted = false;
+        const it = state.items.open.find((i) => i.kind === "stockout");
+        if (it) closeItem(it.id, "done", "owner");
       }
       emit({ type: "snapshot", state: snapshot() });
     },
+    getItems: async () => snapshot().items,
+    itemDone: async (id) => closeItem(id, "done", "owner"),
+    itemDismiss: async (id) => closeItem(id, "dismissed", "owner"),
     smellScenario: async (name) => {
       startScenario(name);
-      pushEvent({ sense: "smell", kind: "device_connected", label: `Scenario: ${name}`, detail: "Replaying through POST /api/sensor/reading", severity: "info", data: { scenario: name } });
+      pushEvent({ sense: "smell", kind: "device_connected", label: `Scenario: ${name}`, detail: "Replaying heater sweeps through POST /api/sensor/reading", severity: "info", data: { scenario: name } });
     },
     sensorReading: async (body) => {
-      state.senses.smell.device = "http";
-      state.senses.smell.sensor_id = body.sensor_id;
-      state.senses.smell.location = body.location;
-      state.senses.smell.gas_ohm = body.gas_ohm;
-      state.senses.smell.temp_c = body.temp_c;
-      state.senses.smell.rh = body.rh;
+      const s = state.senses.smell;
+      s.device = "http";
+      s.sensor_id = body.sensor_id;
+      s.location = body.location;
+      if (typeof body.temp_c === "number") s.temp_c = body.temp_c;
+      if (typeof body.rh === "number") s.rh = body.rh;
     },
-    hearingInject: async (kind) => {
+    earTeach: async ({ label, mic, seconds = 4 }) => {
+      const target = state.senses.ears.mics.find((m) => m.mic === mic) ?? state.senses.ears.mics[0];
+      if (!target) throw new Error("no mic connected");
+      if (!state.senses.ears.labels.some((l) => l.id === label)) throw new Error(`unknown label ${label}`);
+      target.teaching = { label, remaining_s: seconds, examples: 0 };
+      emit({ type: "snapshot", state: snapshot() });
+    },
+    earPrototypes: async () => ({ prototypes: state.senses.ears.prototypes.map((p) => ({ ...p })) }),
+    earForget: async (label) => {
+      state.senses.ears.prototypes = state.senses.ears.prototypes.filter((p) => p.label !== label);
+      for (const m of state.senses.ears.mics) delete m.taught[label];
+      emit({ type: "snapshot", state: snapshot() });
+    },
+    hearingInject: async (kind, location) => {
       const line = HEARING_LINES.find((l) => l.kind === kind) ?? HEARING_LINES[0];
-      pushEvent({ sense: "hearing", kind, label: `${line.label} (injected)`, detail: line.detail, severity: line.severity, data: { ...line.data(), injected: true } });
-      if (kind === "fryer_alarm") speak("Fryer alarm — pull basket two.");
-      if (kind === "ticket_burst") speak("Ticket burst. Fire the burgers first.");
-      if (kind === "door_chime") speak("Someone's at the counter.");
+      const mic = state.senses.ears.mics.find((m) => m.location === location) ?? state.senses.ears.mics[0] ?? mkMic("inject", location ?? "kitchen", "mic");
+      hearingEvent(line, mic, "injected");
     },
+    sounds: async () => ({ clips: SOUND_CLIPS.map((c) => ({ ...c })) }),
+    hosts: async () => ({ port: Number(window.location.port) || 80, hosts: [] }), // mock: no LAN discovery; the page falls back to window.location
     speak: async () => null, // mock has no TTS provider -> speechSynthesis fallback
   };
 

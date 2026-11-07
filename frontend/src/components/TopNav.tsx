@@ -1,13 +1,14 @@
-import { Building2, ChefHat, Radar, Radio, Store } from "lucide-react";
+import { ChefHat, Ear, LayoutList, Smartphone, Store, Wind } from "lucide-react";
 
-export type View = "live" | "kitchen" | "storefront" | "backoffice" | "senses";
+export type View = "board" | "ears" | "nose" | "kitchen" | "storefront" | "sounds";
 
 export const VIEWS: { id: View; label: string; icon: typeof ChefHat }[] = [
-  { id: "live", label: "Live", icon: Radio },
+  { id: "board", label: "Board", icon: LayoutList },
+  { id: "ears", label: "Ears", icon: Ear },
+  { id: "nose", label: "Nose", icon: Wind },
   { id: "kitchen", label: "Kitchen", icon: ChefHat },
   { id: "storefront", label: "Storefront", icon: Store },
-  { id: "backoffice", label: "Back Office", icon: Building2 },
-  { id: "senses", label: "Senses", icon: Radar },
+  { id: "sounds", label: "Sounds", icon: Smartphone },
 ];
 
 export function TopNav({ view, onChange }: { view: View; onChange: (v: View) => void }) {

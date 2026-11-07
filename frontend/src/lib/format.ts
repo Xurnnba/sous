@@ -1,4 +1,4 @@
-import type { Channel, LateRisk, Sense } from "../types";
+import type { Channel, HearingInjectKind, LateRisk, Sense, SmellScenario, Urgency } from "../types";
 
 export const money = (n: number): string =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -17,8 +17,20 @@ export function countdown(minutes: number): string {
 
 export function clockTime(iso: string): string {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  // The backend sometimes sends a bare wall-clock string ("19:36:50"); show it as is.
+  if (Number.isNaN(d.getTime())) return /^\d{1,2}:\d{2}/.test(iso) ? iso : "";
   return d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+/** "12 s ago" / "3 min ago" / "2 h ago" relative to `now` (ms). */
+export function ago(iso: string, now: number = Date.now()): string {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "";
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 60) return `${s} s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  return `${Math.round(m / 60)} h ago`;
 }
 
 export function simClock(simMinutes: number): string {
@@ -29,6 +41,10 @@ export function simClock(simMinutes: number): string {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
 }
 
+export const pct = (v: number | null | undefined, digits = 0): string => (typeof v === "number" ? `${(v * 100).toFixed(digits)}%` : "—");
+
+export const titleCase = (s: string): string => s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+
 export const channelMeta: Record<Channel, { label: string; className: string }> = {
   doordash: { label: "DoorDash", className: "bg-doordash text-white" },
   ubereats: { label: "Uber Eats", className: "bg-ubereats text-black" },
@@ -36,24 +52,10 @@ export const channelMeta: Record<Channel, { label: string; className: string }> 
   walkin: { label: "Walk-in", className: "bg-zinc-300 text-black" },
 };
 
-export const riskColor: Record<LateRisk, string> = {
-  low: "text-ok",
-  med: "text-warn",
-  high: "text-bad",
-};
+export const riskColor: Record<LateRisk, string> = { low: "text-ok", med: "text-warn", high: "text-bad" };
+export const riskBorder: Record<LateRisk, string> = { low: "border-l-ok", med: "border-l-warn", high: "border-l-bad" };
 
-export const riskBorder: Record<LateRisk, string> = {
-  low: "border-l-ok",
-  med: "border-l-warn",
-  high: "border-l-bad",
-};
-
-export const senseLabel: Record<Sense, string> = {
-  hearing: "Ears",
-  smell: "Nose",
-  orders: "Orders",
-  agent: "Brain",
-};
+export const senseLabel: Record<Sense, string> = { hearing: "Ears", smell: "Nose", orders: "Orders", agent: "Brain" };
 
 export function minutesToStockoutColor(m: number | null): string {
   if (m === null) return "text-zinc-400";
@@ -69,11 +71,58 @@ export const freshnessClass: Record<string, string> = {
   spoiled: "bg-bad/15 text-bad border-bad/40",
 };
 
-export const scenarioLabels: { name: "spoilage_walkin" | "fryer_oil" | "burning" | "cleaning" | "nominal" | "stop"; label: string }[] = [
-  { name: "spoilage_walkin", label: "Spoilage in walk-in" },
-  { name: "fryer_oil", label: "Fryer oil degraded" },
-  { name: "burning", label: "Burning at station" },
-  { name: "cleaning", label: "Cleaning cycle" },
+export const URGENCIES: Urgency[] = ["now", "next", "today", "later"];
+
+export const urgencyMeta: Record<Urgency, { label: string; border: string; text: string; bg: string; dot: string; empty: string }> = {
+  now: { label: "Now", border: "border-l-bad", text: "text-bad", bg: "bg-bad/15", dot: "bg-bad", empty: "Nothing right now" },
+  next: { label: "Next", border: "border-l-warn", text: "text-warn", bg: "bg-warn/15", dot: "bg-warn", empty: "Nothing queued" },
+  today: { label: "Today", border: "border-l-ok", text: "text-ok", bg: "bg-ok/15", dot: "bg-ok", empty: "Nothing for today" },
+  later: { label: "Later", border: "border-l-zinc-500", text: "text-zinc-400", bg: "bg-zinc-500/15", dot: "bg-zinc-500", empty: "Nothing later" },
+};
+
+export const scenarioLabels: { name: SmellScenario; label: string }[] = [
+  { name: "spoilage_walkin", label: "Spoilage (produce)" },
+  { name: "spoilage_protein", label: "Spoilage (protein)" },
+  { name: "fryer_oil", label: "Fryer oil" },
+  { name: "burning", label: "Burning" },
+  { name: "cleaning", label: "Cleaning" },
+  { name: "door_open", label: "Door open" },
   { name: "nominal", label: "Nominal" },
   { name: "stop", label: "Stop" },
 ];
+
+export const INJECT_KINDS: { kind: HearingInjectKind; label: string }[] = [
+  { kind: "ticket_burst", label: "Ticket burst" },
+  { kind: "fryer_alarm", label: "Fryer alarm" },
+  { kind: "door_chime", label: "Door chime" },
+  { kind: "phone_ring", label: "Phone ring" },
+  { kind: "clatter", label: "Clatter" },
+];
+
+/** Zero-shot kitchen-event score keys shown as bars on the Ears page, in display order. */
+export const EVENT_SCORE_KEYS = ["fryer_alarm", "door_chime", "ticket_burst", "clatter", "phone_ring"] as const;
+
+export const kindColor: Record<string, string> = {
+  door_chime: "bg-sky-400",
+  ticket_burst: "bg-accent",
+  fryer_alarm: "bg-bad",
+  clatter: "bg-warn",
+  noise_spike: "bg-warn",
+  phone_ring: "bg-emerald-400",
+  speech: "bg-fuchsia-400",
+  taught: "bg-violet-400",
+};
+
+/** Human label for smell classes / scenario kinds. */
+export const smellKindLabel: Record<string, string> = {
+  nominal: "Nominal",
+  spoilage_produce: "Produce spoilage",
+  spoilage_protein: "Protein spoilage",
+  burning: "Burning",
+  oil_degraded: "Fryer oil degraded",
+  cleaning: "Cleaning",
+  door_open: "Door open",
+  unknown: "Unknown",
+};
+
+export const HEATER_STEPS_C = [200, 250, 320, 400];

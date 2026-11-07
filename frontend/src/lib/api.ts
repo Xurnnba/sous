@@ -1,4 +1,4 @@
-import type { ControlBody, HearingInjectKind, Items, SensorReadingBody, SmellScenario, SoundClip, State } from "../types";
+import type { ControlBody, HearingInjectKind, HostsResponse, Items, SensorReadingBody, SmellScenario, SoundClip, State } from "../types";
 
 // Thin REST client for every endpoint in CONTRACT.md. Each helper is replaceable in
 // mock mode (see mock/mockBackend.ts), so the UI never has to know which mode it is in.
@@ -18,6 +18,8 @@ export type SousApi = {
   earForget: (label: string) => Promise<void>;
   hearingInject: (kind: HearingInjectKind, location?: string) => Promise<void>;
   sounds: () => Promise<{ clips: SoundClip[] }>;
+  /** LAN addresses the backend is reachable on, for the phone QR code. */
+  hosts: () => Promise<HostsResponse>;
   /** Returns an MP3 blob when the server has a TTS provider; null on 204 (use speechSynthesis). */
   speak: (text: string) => Promise<Blob | null>;
 };
@@ -49,6 +51,7 @@ export const httpApi: SousApi = {
   earForget: (label) => request("DELETE", `/api/ear/prototypes/${encodeURIComponent(label)}`).then(() => undefined),
   hearingInject: (kind, location) => postJson("/api/hearing/inject", location ? { kind, location } : { kind }).then(() => undefined),
   sounds: () => fetch("/api/sounds").then((r) => (r.ok ? r.json() : { clips: [] })),
+  hosts: () => fetch("/api/hosts").then((r) => (r.ok ? r.json() : { port: 0, hosts: [] })),
   speak: async (text) => {
     const res = await postJson("/api/speak", { text });
     if (res.status === 204) return null;

@@ -207,6 +207,31 @@ async def health() -> dict:
             "mics": len(hub.ears.mics)}
 
 
+@app.get("/api/hosts")
+async def hosts(request: Request) -> dict:
+    """LAN addresses of this server, so a phone can reach the sound board when the laptop opened localhost."""
+    import socket
+    port = request.url.port or 8000
+    ips: list[str] = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith("127.") and ip not in ips:
+                ips.append(ip)
+    except Exception:
+        pass
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        s.close()
+        if not ip.startswith("127.") and ip not in ips:
+            ips.insert(0, ip)
+    except Exception:
+        pass
+    return {"port": port, "hosts": [{"ip": ip, "url": f"http://{ip}:{port}/#/sounds"} for ip in ips]}
+
+
 @app.get("/api/state")
 async def state() -> dict:
     return hub.state()

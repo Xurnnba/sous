@@ -41,6 +41,7 @@ UNKNOWN_DEVIATION = 0.26     # (~30 %) floor for an "unknown" event
 ESCALATE_CONFIDENCE = 0.7
 ADAPT_BELOW_DEVIATION = 0.06
 OFFLINE_AFTER_S = 6.0
+REBASE_SAMPLES = 6           # quick re-baseline after a relocation (sensor is known-good; only the room changed)
 
 URGENCY = {"burning": "now", "oil_degraded": "next", "unknown": "next", "spoilage_produce": "today",
            "spoilage_protein": "today", "cleaning": "info", "door_open": "info"}
@@ -56,6 +57,7 @@ class NosePipeline:
         self.on_event = on_event
         self.model = model
         self.warmup_samples = warmup_samples
+        self.rebase_samples = REBASE_SAMPLES
         self.reset()
 
     # ------------------------------------------------------------------ lifecycle
@@ -84,6 +86,7 @@ class NosePipeline:
         self._streak = 0
         self._quiet_streak = 0
         self._unknown_streak = 0
+        self._announced = False
 
     def _ensure_model(self) -> NoseModel:
         if self.model is None:
@@ -115,7 +118,8 @@ class NosePipeline:
             self.status = "warming"
             self.trace.append({"t": round(t, 1), "ratio": 1.0, "ratios": [1.0] * 4})
             return
-        if self.calibrator.n_nominal == 0 and not self._window:
+        if not self._announced:
+            self._announced = True
             self.status = "calibrating"
             cal = self.calibrator.snapshot()
             self.on_event({"sense": "smell", "kind": "device_connected", "severity": "info",
@@ -160,7 +164,15 @@ class NosePipeline:
     # ------------------------------------------------------------------ detection with hysteresis
     def _detect(self, t: float, pred: dict, dev: float) -> None:
         label = pred["label"]
-        named = label not in ("nominal", "unknown") and dev >= MIN_DEVIATION
+        # falling-edge guard: a decaying tail (after a cleaning spike or a cleared anomaly) is never a
+        # *new* finding, whatever the classifier thinks of its shape
+        devs = getattr(self, "_devs", None)
+        if devs is None:
+            devs = self._devs = deque(maxlen=60)
+        devs.append((t, dev))
+        past = [d for (tt, d) in devs if t - tt >= 6.0]
+        falling = bool(past) and dev < 0.85 * past[-1]
+        named = label not in ("nominal", "unknown") and dev >= MIN_DEVIATION and not falling
         if named:
             self._streak = self._streak + 1 if label == self._streak_label else 1
             self._streak_label = label
@@ -190,7 +202,8 @@ class NosePipeline:
             self.status = "nominal"
             self.on_event({"sense": "smell", "kind": "voc_clear", "severity": "info", "label": "Air cleared",
                            "detail": f"{prev} signature gone at {self.location}",
-                           "data": {"previous": prev, "fingerprint": [round(x, 3) for x in self.ratios or []],
+                           "data": {"previous": prev, "reason": "cleared",
+                                    "fingerprint": [round(x, 3) for x in self.ratios or []],
                                     "location": self.location}})
 
     def _raise(self, kind: str, pred: dict, dev: float, escalated_from: Optional[str] = None) -> None:
@@ -214,16 +227,27 @@ class NosePipeline:
                                 "calibration_quality": self.calibrator.quality}})
 
     def _relocate(self, location: str) -> None:
-        """Readings now come from a different place. Keep the calibration, drop the anomaly
-        bookkeeping so the new location is judged on its own signature."""
+        """Readings now come from a different place. Keep what belongs to the sensor (its humidity
+        slope), re-collect what belongs to the room (baseline, RH reference) over a few readings, and
+        drop the anomaly bookkeeping so the new location is judged on its own signature. An open
+        anomaly is closed with ``voc_clear`` (reason ``relocated``) so consumers see a clean state
+        machine; the detail says it was left unresolved, not that the air cleared."""
+        if self.anomaly is not None:
+            prev = self.anomaly["kind"]
+            self.on_event({"sense": "smell", "kind": "voc_clear", "severity": "info", "label": "Stopped watching",
+                           "detail": f"{prev} at {self.location} left unresolved; sensor moved to {location}",
+                           "data": {"previous": prev, "reason": "relocated", "location": self.location}})
         self.anomaly = None
         self._window.clear()
+        self.calibrator.rebase(self.rebase_samples)
         self._streak = self._quiet_streak = self._unknown_streak = 0
         self._streak_label = None
-        if self.status == "anomaly":
-            self.status = "nominal"
+        self.status = "calibrating"
+        self.probs = None
+        self.prediction = None
         self.on_event({"sense": "smell", "kind": "relocated", "severity": "info",
-                       "label": f"Nose now watching the {location}", "detail": f"moved from {self.location}",
+                       "label": f"Nose now watching the {location}",
+                       "detail": f"moved from {self.location}; re-baselining over {self.rebase_samples} readings",
                        "data": {"from": self.location, "to": location}})
 
     # ------------------------------------------------------------------ housekeeping

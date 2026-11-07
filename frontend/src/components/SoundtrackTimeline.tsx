@@ -1,12 +1,7 @@
+import { kindColor } from "../lib/format";
 import type { Event, SoundtrackTruth } from "../types";
 
-const kindColor: Record<string, string> = {
-  door_chime: "bg-sky-400",
-  ticket_burst: "bg-accent",
-  fryer_alarm: "bg-bad",
-  noise_spike: "bg-warn",
-  speech: "bg-fuchsia-400",
-};
+const LEGEND = ["ticket_burst", "fryer_alarm", "door_chime", "phone_ring", "clatter"];
 
 /**
  * Ground-truth markers (top row) vs. detections heard on /ws during this playback (bottom row).
@@ -29,7 +24,7 @@ export function SoundtrackTimeline({ truth, position, duration, detections, star
       </div>
       <div className="relative h-3 rounded bg-ink-700">
         {truth?.events.map((e, i) => (
-          <span key={i} title={`${e.label ?? e.kind} @ ${e.t}s`} className={`absolute top-0 h-full w-1 rounded ${kindColor[e.kind] ?? "bg-zinc-300"}`} style={{ left: pct(e.t) }} />
+          <span key={i} title={`${e.label ?? e.kind}${e.clip ? ` (${e.clip})` : ""} @ ${e.t}s`} className={`absolute top-0 h-full w-1 rounded ${kindColor[e.kind] ?? "bg-zinc-300"}`} style={{ left: pct(e.t) }} />
         ))}
         {showCursor && <span className="absolute top-[-2px] h-[calc(100%+4px)] w-0.5 bg-zinc-100" style={{ left: pct(cursor) }} />}
       </div>
@@ -41,9 +36,9 @@ export function SoundtrackTimeline({ truth, position, duration, detections, star
         {showCursor && <span className="absolute top-[-2px] h-[calc(100%+4px)] w-0.5 bg-zinc-100" style={{ left: pct(cursor) }} />}
       </div>
       <div className="flex flex-wrap gap-3 pt-1">
-        {Object.entries(kindColor).map(([k, c]) => (
+        {LEGEND.map((k) => (
           <span key={k} className="inline-flex items-center gap-1 text-[10px] text-zinc-400">
-            <span className={`w-2 h-2 rounded-sm ${c}`} /> {k.replace("_", " ")}
+            <span className={`w-2 h-2 rounded-sm ${kindColor[k]}`} /> {k.replace("_", " ")}
           </span>
         ))}
       </div>

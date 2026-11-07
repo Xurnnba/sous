@@ -55,40 +55,41 @@ to `POST /api/sensor/reading`. A board without WiFi prints the same line to seri
 `tools/serial_bridge.py` forwards it from a laptop. The backend does not know or care which
 of the three sources is talking; the `device` badge in the UI only reports it.
 
-## Signal pipeline (implemented, in `backend/sous/senses/smell.py`)
+## Signal pipeline (implemented, `backend/sous/senses/nose/`)
 
-1. **Warm-up and baseline.** The first N readings establish a median baseline. On real hardware
-   the heater needs ~5 minutes to stabilise, so N should be ~300; the demo uses 12 so the sensor
-   is "online" in seconds. Baseline humidity is recorded at the same time.
-2. **Humidity compensation.** MOX resistance drops as relative humidity rises. We apply a
-   first-order correction of 0.8 % resistance per %RH relative to the baseline humidity. This is
-   the same order of magnitude Bosch uses in BSEC; a production version would fit the slope
-   per sensor during burn-in.
-3. **Ratio and derivative.** `ratio = baseline / compensated_gas`. The derivative is computed
-   over a 5 s window. Both feed the detector and are shown live in the Back Office chart.
-4. **Slow baseline adaptation.** While the state is nominal and the ratio is below 1.1 the
-   baseline tracks the signal with a very long time constant, so drift over a shift does not
-   become a false alarm. Adaptation is frozen during an anomaly so a slow rise cannot hide itself.
-5. **Anomaly detection.** Ratio above 1.35 sustained for 4 s raises an anomaly; below 1.15 for
-   8 s clears it. Hysteresis stops chatter around the threshold.
-6. **Signature classification.** A rule set over peak rise rate, magnitude, temperature delta
-   and location labels the anomaly, with an explicit prior confidence:
-   * fast (>0.25/s) and large (>2.5×) or with a temperature jump → burning (0.8)
-   * fry-station and slow (<0.03/s) → oil degraded (0.65)
-   * sharp spike (>0.12/s) in a cold room → cleaning product (0.55)
-   * walk-in and slow → spoilage (0.7)
-   * anything else → unknown (0.3), which the agent turns into "ask a human"
-7. **Escalation and relocation.** A slow anomaly that suddenly turns fast and large is re-emitted
-   as burning. Readings from a new location reset the anomaly bookkeeping but keep calibration.
-8. **Context fusion (LLM).** The anomaly, its features, the sensor location, the most perishable
-   stock in that location and its age, the time since open, the recent kitchen sounds and the
-   current order load are handed to the model, which returns `{kind, confidence, action, line}`.
-   The action set is deliberately small: promote, alert, change_oil, ignore, ask_human. If the
-   model is unavailable or slow (6 s timeout) the rule label and a templated line are used, so
-   the demo never stalls.
-9. **Action.** Spoilage → mark the ingredient "turning", discount every dish using it, draft a
-   zero-quantity reorder for tomorrow. Burning → alert. Oil → change-oil task plus a reorder draft.
-   Cleaning → suppress. Unknown → ask a human. The voice says one line.
+The v2 nose uses the BME688's **heater-sweep**: the sensor steps its heater through four
+temperatures (200, 250, 320, 400 °C) and reports one resistance per step. Different gas families
+react differently across temperatures, so the four-vector *shape* is a crude chemical fingerprint.
+This is the principle behind Bosch's own gas-scan mode; we implement the small-model version.
+
+1. **Calibration** (`calibration.py`). Per-step clean-air baseline from the warm-up window; status
+   warming → calibrating → ready; slow adaptation only while the classifier says nominal (so a slow
+   rise cannot hide itself); an online least-squares fit of log(R) against relative humidity over
+   nominal readings, used to compensate the ~0.8 %/%RH cross-sensitivity; a drift estimate; and a
+   0–1 quality score the UI shows. "Place it and it calibrates itself" is this module.
+2. **Fingerprint features** (`features.py`). Over the last 30 s of compensated readings: ratio per
+   step (baseline ÷ gas; 1.0 is clean air, >1 reducing gas, <1 oxidising gas), the fingerprint
+   shape (log-ratios normalised by the 320 °C step), max and mean rise rate, peak magnitude, time
+   above threshold, temperature and humidity deltas, and a decay indicator.
+3. **Classifier** (`model.py`). Gradient-boosted decision trees over those features. Classes:
+   nominal, spoilage (produce: ethanol/acetaldehyde, strongest at high heater temperature),
+   spoilage (protein: amines, strongest at low heater temperature), burning (broad, fast, with a
+   temperature jump), oil degraded (aldehydes, slow creep at the fry station), cleaning (oxidising
+   chlorine: resistance *rises* at some steps, with a humidity jump). Output is a probability per
+   class; below a confidence floor the answer is `unknown`, which the agent turns into "take a
+   look" rather than an action. Trains in under a minute on CPU; a few hundred kilobytes on disk;
+   inference is microseconds, so it runs on the ESP32's host or any Raspberry Pi.
+4. **Pipeline** (`pipeline.py`). Accepts 4-step readings or the legacy single `gas_ohm` (then the
+   fingerprint is neutral and only kinetics carry information); hysteresis so it does not flap;
+   events carry class, confidence, probabilities, fingerprint and an **urgency**: burning → now,
+   oil degraded or unknown → next, spoilage → today, cleaning or door-open → info. That urgency is
+   what makes the nose's slower, lower-priority signals coexist with the ears' real-time ones.
+5. **Honesty about training data.** The classifier is bootstrapped on synthetic windows from the
+   physics model in `physics.py` (power-law MOX response, first-order kinetics, per-sensor gain
+   ×0.6–1.6, baseline drift, noise, humidity cross-sensitivity, nuisance events such as a door
+   left open or someone breathing near the sensor). Its held-out accuracy is therefore an upper
+   bound; `tests/eval_nose.py` prints the confusion matrix and detection latency per scenario. The
+   first day with hardware replaces the synthetic set with logged data and the same code retrains.
 
 ## What the simulator does and does not do
 
@@ -99,7 +100,7 @@ compressed for the stage (spoilage reaches 1.9× in ~30 s, which in a real coole
 hours). It calls the same `ingest()` the HTTP endpoint calls, with `source="replay"`, and the UI
 shows a banner saying so. When a real board posts, the simulator stops automatically.
 
-What the simulator cannot tell you: whether the heuristic thresholds are right for a real
+What the simulator cannot tell you: whether the fingerprint patterns and thresholds match a real
 cooler. That requires a day of logging with a board, which is the first thing to do with the
 hardware.
 

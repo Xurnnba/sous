@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getMicId, getMicLocation, setMicLocation as persistLocation, type MicLocation } from "../lib/device";
 import type { SoundtrackTruth } from "../types";
 
 const TARGET_RATE = 16000;
@@ -17,6 +18,11 @@ export type AudioStreamState = {
   duration: number;
   truth: SoundtrackTruth | null;
   error: string | null;
+  /** Stable id of this device as a microphone (localStorage.sous_mic_id). */
+  micId: string;
+  /** Where this device sits (localStorage.sous_mic_location). */
+  location: MicLocation;
+  setLocation: (loc: MicLocation) => void;
   startMic: () => Promise<void>;
   playSoundtrack: () => Promise<void>;
   stop: () => void;
@@ -118,6 +124,8 @@ export function useAudioStream(): AudioStreamState {
   const [duration, setDuration] = useState(0);
   const [truth, setTruth] = useState<SoundtrackTruth | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [micId] = useState<string>(getMicId);
+  const [location, setLocationState] = useState<MicLocation>(getMicLocation);
 
   const ctxRef = useRef<AudioContext | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -171,10 +179,10 @@ export function useAudioStream(): AudioStreamState {
       }
       setWsState("connecting");
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${proto}//${window.location.host}/ws/audio`);
+      const q = new URLSearchParams({ mic: micId, location: getMicLocation(), source: src });
+      const ws = new WebSocket(`${proto}//${window.location.host}/ws/audio?${q.toString()}`);
       ws.binaryType = "arraybuffer";
       ws.onopen = () => {
-        ws.send(JSON.stringify({ source: src, sample_rate: TARGET_RATE }));
         setWsState("open");
         resolve(ws);
       };
@@ -327,7 +335,15 @@ export function useAudioStream(): AudioStreamState {
       .catch(() => undefined);
   }, []);
 
-  return { source, level, wsState, framesSent, position, duration, truth, error, startMic, playSoundtrack, stop };
+  const setLocation = useCallback((loc: MicLocation) => {
+    persistLocation(loc);
+    setLocationState(loc);
+    // Re-label a live stream in place (contract: optional text frame {"location": ...}).
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ location: loc }));
+  }, []);
+
+  return { source, level, wsState, framesSent, position, duration, truth, error, micId, location, setLocation, startMic, playSoundtrack, stop };
 }
 
 /** The contract says "ground-truth event timestamps" without a fixed shape; accept a few plausible ones. */
@@ -340,9 +356,10 @@ function normaliseTruth(raw: unknown): SoundtrackTruth {
       const t = Number(o.t ?? o.time ?? o.start ?? o.at ?? o.t_s ?? o.seconds);
       const kind = String(o.kind ?? o.type ?? o.label ?? "event");
       const label = typeof o.label === "string" ? o.label : undefined;
-      return Number.isFinite(t) ? { t, kind, label } : null;
+      const clip = typeof o.clip === "string" ? o.clip : undefined;
+      return Number.isFinite(t) ? { t, kind, label, clip } : null;
     })
-    .filter((x): x is { t: number; kind: string; label: string | undefined } => x !== null);
+    .filter((x): x is { t: number; kind: string; label: string | undefined; clip: string | undefined } => x !== null);
   const duration = Number(r.duration_s ?? r.duration ?? r.length_s);
   return { duration_s: Number.isFinite(duration) ? duration : undefined, events };
 }

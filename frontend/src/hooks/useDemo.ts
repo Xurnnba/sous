@@ -3,12 +3,12 @@ import type { View } from "../components/TopNav";
 import type { SousApi } from "../lib/api";
 
 /**
- * One-click demo autopilot. Every step is a client-side timer; tune the `at` seconds below.
+ * Scripted run (demo autopilot). Every step is a client-side timer; tune the `at` seconds below.
  * `view` switches are fire-and-forget hash changes, so the operator can click around freely
  * while the script runs — the next step simply switches the tab again.
  */
 export type DemoStep = {
-  /** Seconds after "Run demo" was clicked. */
+  /** Seconds after "Scripted run" was clicked. */
   at: number;
   /** Short caption for the progress chip. */
   label: string;
@@ -28,7 +28,7 @@ export const DEMO_STEPS: DemoStep[] = [
     run: async ({ api, go }) => {
       await api.reset();
       await api.control({ rush: true, speed: 1 });
-      go("kitchen");
+      go("board");
     },
   },
   { at: 3, label: "ears", run: ({ playSoundtrack }) => playSoundtrack() },
@@ -37,17 +37,17 @@ export const DEMO_STEPS: DemoStep[] = [
     at: 60,
     label: "nose · spoilage",
     run: async ({ api, go }) => {
-      go("senses");
+      go("nose");
       await api.smellScenario("spoilage_walkin");
     },
   },
-  { at: 85, label: "back office", run: ({ go }) => go("backoffice") },
+  { at: 85, label: "kitchen", run: ({ go }) => go("kitchen") },
   {
     at: 100,
     label: "nose · burning",
     run: async ({ api, go }) => {
       await api.smellScenario("burning");
-      go("kitchen");
+      go("board");
     },
   },
   { at: 120, label: "nose · cleaning", run: ({ api }) => api.smellScenario("cleaning") },

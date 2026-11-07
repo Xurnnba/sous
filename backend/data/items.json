@@ -1,0 +1,225 @@
+{
+"seq": 7,
+"items": [
+{
+"id": "i1",
+"created": "2026-11-07T19:47:57",
+"updated": "2026-11-07T19:47:57",
+"title": "Avocado is turning: use it today",
+"detail": "Fermentation signature in the walk-in. Sous discounted every avocado dish 20% and drafted a zero reorder for tomorrow. Check the tray at close.",
+"urgency": "today",
+"sense": "smell",
+"kind": "spoilage_produce",
+"key": "spoilage_produce",
+"status": "done",
+"count": 1,
+"auto": {
+"type": "menu_discount",
+"summary": "20% off avocado dishes, reorder skipped"
+},
+"evidence": {
+"location": "walk-in",
+"confidence": 0.9997,
+"probs": {
+"burning": 0.0001,
+"cleaning": 0.0001,
+"nominal": 0.0001,
+"oil_degraded": 0.0001,
+"spoilage_produce": 0.9995,
+"spoilage_protein": 0.0002
+},
+"fingerprint": [
+1.153,
+1.267,
+1.397,
+1.478
+],
+"single_channel": false
+},
+"speak": null,
+"location": "walk-in",
+"expires_at": 1794095277.9972975,
+"closed": "2026-11-07T19:48:12",
+"closed_by": "sous"
+},
+{
+"id": "i2",
+"created": "2026-11-07T19:48:33",
+"updated": "2026-11-07T19:48:33",
+"title": "Something is burning on the line: check station 2 now",
+"detail": "Fast, large VOC rise with a temperature jump. Not a cleaning product.",
+"urgency": "now",
+"sense": "smell",
+"kind": "burning",
+"key": "burning",
+"status": "done",
+"count": 1,
+"auto": null,
+"evidence": {
+"location": "line",
+"confidence": 0.56,
+"probs": {
+"burning": 0.56,
+"cleaning": 0.0237,
+"nominal": 0.0386,
+"oil_degraded": 0.2183,
+"spoilage_produce": 0.0684,
+"spoilage_protein": 0.0909
+},
+"fingerprint": [
+1.489,
+1.746,
+1.771,
+1.597
+],
+"single_channel": false
+},
+"speak": null,
+"location": "line",
+"expires_at": 1794081153.5147407,
+"closed": "2026-11-07T19:48:34",
+"closed_by": "sous"
+},
+{
+"id": "i3",
+"created": "2026-11-07T19:49:01",
+"updated": "2026-11-07T19:49:01",
+"title": "Protein in the walk-in smells off: check the chicken before service",
+"detail": "Amine signature (spoiling protein). Sous does not auto-act on food safety; a person decides.",
+"urgency": "today",
+"sense": "smell",
+"kind": "spoilage_protein",
+"key": "spoilage_protein",
+"status": "done",
+"count": 1,
+"auto": null,
+"evidence": {
+"location": "walk-in",
+"confidence": 0.999,
+"probs": {
+"burning": 0.0001,
+"cleaning": 0.0007,
+"nominal": 0.0001,
+"oil_degraded": 0.0001,
+"spoilage_produce": 0.0004,
+"spoilage_protein": 0.9986
+},
+"fingerprint": [
+1.437,
+1.239,
+0.902,
+0.731
+],
+"single_channel": false
+},
+"speak": null,
+"location": "walk-in",
+"expires_at": 1794095341.9137049,
+"closed": "2026-11-07T19:49:24",
+"closed_by": "sous"
+},
+{
+"id": "i4",
+"created": "2026-11-07T19:49:42",
+"updated": "2026-11-07T19:49:42",
+"title": "Avocado runs out in ~17 min: approve the reorder (24 each)",
+"detail": "Sous already pulled Avocado Toast, Guacamole & Chips, Breakfast Burrito from the delivery apps and is promoting Heirloom Tomato Toast at 15% off. Reorder from Paragon Foods is drafted; press 'We got more' when it lands.",
+"urgency": "next",
+"sense": "orders",
+"kind": "stockout",
+"key": "stockout_avocado",
+"status": "open",
+"count": 1,
+"auto": {
+"type": "menu_hide",
+"summary": "3 dishes pulled, substitute promoted, reorder drafted"
+},
+"evidence": {
+"ingredient": "avocado",
+"minutes_to_stockout": 17.990958630575875,
+"on_hand": 6.0,
+"burn_rate_per_min": 0.3335008502439064
+},
+"speak": null,
+"location": null,
+"expires_at": 1794084582.5891986
+},
+{
+"id": "i5",
+"created": "2026-11-07T19:49:46",
+"updated": "2026-11-07T19:49:46",
+"title": "Change the fryer oil before the dinner rush",
+"detail": "Slow aldehyde creep at the fry station: the oil is past its life. Reorder drafted.",
+"urgency": "next",
+"sense": "smell",
+"kind": "oil_degraded",
+"key": "oil",
+"status": "done",
+"count": 1,
+"auto": {
+"type": "reorder_draft",
+"summary": "20 L fry oil drafted"
+},
+"evidence": {
+"location": "fry-station",
+"confidence": 0.8712,
+"probs": {
+"burning": 0.0028,
+"cleaning": 0.005,
+"nominal": 0.0948,
+"oil_degraded": 0.8712,
+"spoilage_produce": 0.0065,
+"spoilage_protein": 0.0197
+},
+"fingerprint": [
+1.119,
+1.142,
+1.112,
+1.038
+],
+"single_channel": false
+},
+"speak": null,
+"location": "fry-station",
+"expires_at": 1794081886.6795788,
+"closed": "2026-11-07T19:49:49",
+"closed_by": "sous"
+},
+{
+"id": "i6",
+"created": "2026-11-07T19:50:19",
+"updated": "2026-11-07T19:50:19",
+"title": "Protein in the walk-in smells off: check the chicken before service",
+"detail": "Amine signature (spoiling protein). Sous does not auto-act on food safety; a person decides.",
+"urgency": "today",
+"sense": "smell",
+"kind": "spoilage_protein",
+"key": "spoilage_protein",
+"status": "open",
+"count": 1,
+"auto": null,
+"evidence": {
+"location": "walk-in",
+"confidence": 0.9926,
+"probs": {
+"burning": 0.0001,
+"cleaning": 0.0021,
+"nominal": 0.0018,
+"oil_degraded": 0.0034,
+"spoilage_produce": 0.0002,
+"spoilage_protein": 0.9924
+},
+"fingerprint": [
+1.278,
+1.149,
+1.004,
+0.885
+],
+"single_channel": false
+},
+"speak": null,
+"location": "walk-in",
+"expires_at": 1794095419.197231
+}
+]
+}

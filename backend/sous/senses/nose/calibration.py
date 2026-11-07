@@ -55,6 +55,20 @@ class Calibrator:
         # exponentially forgotten sums for the slope fit
         self._sw = self._sx = self._sy = self._sxx = self._sxy = 0.0
 
+    def rebase(self, samples: int = 6) -> None:
+        """The sensor now sees a different room (or the demo moved it). The humidity slope is a
+        property of the sensor and is kept; the clean-air baseline, the RH reference and the slope
+        fit's running sums belong to the old environment and are re-collected over the next
+        ``samples`` readings. Status goes back to ``warming`` meanwhile."""
+        self.status = "warming"
+        self.baseline = None
+        self.baseline_init = None
+        self.rh_ref = None
+        self._warm, self._warm_rh = [], []
+        self.warmup_samples = samples
+        self._sw = self._sx = self._sy = self._sxx = self._sxy = 0.0
+        self.rh_min, self.rh_max = math.inf, -math.inf
+
     # ------------------------------------------------------------------ properties
     @property
     def samples_remaining(self) -> int:
