@@ -20,12 +20,13 @@ const ACTION_ICON: Record<Exclude<ActionType, "speak">, typeof Tag> = {
 
 /** Best-effort guess at which sense triggered an action, from its payload / summary. */
 function triggeredBy(a: Action): Exclude<Sense, "agent"> | null {
+  if (a.type === "fire_now") return "orders";
   const p = a.payload ?? {};
   if ("ingredient" in p) return "orders";
   const text = `${a.summary} ${JSON.stringify(p)}`.toLowerCase();
   if ("station" in p || /\b(nose|smell|spoil|burn|voc|walk-in|fryer oil)\b/.test(text)) return "smell";
   if (/\b(heard|ticket print|dasher|door|fryer alarm|loud)\b/.test(text)) return "hearing";
-  if (a.type === "fire_now" || "order_id" in p || "order_ids" in p) return "orders";
+  if ("order_id" in p || "order_ids" in p) return "orders";
   return null;
 }
 

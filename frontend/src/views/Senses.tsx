@@ -31,15 +31,16 @@ export function Senses({ audio }: { audio: AudioStreamState }) {
   const { state, events, api } = useSous();
   const [busy, setBusy] = useState<string | null>(null);
   const startedAt = useRef<number | null>(null);
+  // Stamp the start of each playback; keep it after playback ends so the detected markers stay visible until the next play.
   useEffect(() => {
-    if (audio.source === "soundtrack" && startedAt.current === null) startedAt.current = Date.now();
-    if (audio.source !== "soundtrack") startedAt.current = null;
+    if (audio.source === "soundtrack") startedAt.current = Date.now();
   }, [audio.source]);
+  const playbackFinished = audio.source !== "soundtrack" && startedAt.current !== null;
 
   if (!state) return <Empty>Loading sensor status…</Empty>;
   const smell = state.senses.smell;
   const hearing = events.filter((e) => e.sense === "hearing");
-  const latestFeat = hearing.find((e) => e.data && ("peak_hz" in e.data || "rms" in e.data || "flatness" in e.data));
+  const latestFeat = hearing.find((e) => e.data && ("peak_hz" in e.data || "db" in e.data || "rms" in e.data || "flatness" in e.data));
 
   const run = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
@@ -175,7 +176,7 @@ export function Senses({ audio }: { audio: AudioStreamState }) {
             </span>
           </div>
           {audio.error && <p className="text-xs text-bad mb-3">{audio.error}</p>}
-          <SoundtrackTimeline truth={audio.truth} position={audio.position} duration={audio.duration} detections={hearing} startedAt={startedAt.current} />
+          <SoundtrackTimeline truth={audio.truth} position={audio.position} duration={audio.duration} detections={hearing} startedAt={startedAt.current} finished={playbackFinished} />
           <p className="text-xs text-zinc-500 mt-3">
             Audio is downsampled in-browser to 16 kHz mono Int16 and streamed as 250 ms binary frames to <code className="num">/ws/audio</code>. Nothing is recorded.
           </p>
@@ -183,27 +184,27 @@ export function Senses({ audio }: { audio: AudioStreamState }) {
 
         <Panel title="Classifier features" right={<span className="text-[10px] text-zinc-500 uppercase tracking-widest">latest hearing event</span>}>
           {!latestFeat ? (
-            <Empty>No classifier readouts yet. Features appear here with each hearing event (peak_hz, flatness, rms).</Empty>
+            <Empty>No classifier readouts yet. Features appear here with each hearing event (peak_hz, flatness, level).</Empty>
           ) : (
             <div>
               <div className="text-sm font-semibold mb-2">
                 {latestFeat.label} <span className="text-zinc-500 font-normal">· {latestFeat.kind}</span>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                {(["peak_hz", "flatness", "rms"] as const).map((k) => {
-                  const v = latestFeat.data[k];
+                {(["peak_hz", "flatness", "level"] as const).map((k) => {
+                  const v = k === "level" ? latestFeat.data.db ?? latestFeat.data.rms : latestFeat.data[k];
                   return (
                     <div key={k} className="rounded-lg bg-ink-800 py-2 text-center">
                       <div className="text-[10px] uppercase tracking-widest text-zinc-500">{k}</div>
-                      <div className="num text-xl font-bold">{typeof v === "number" ? (k === "peak_hz" ? `${Math.round(v)} Hz` : v.toFixed(2)) : "—"}</div>
+                      <div className="num text-xl font-bold">{typeof v === "number" ? (k === "peak_hz" ? `${Math.round(v)} Hz` : k === "level" ? `${v.toFixed(1)} dBFS` : v.toFixed(2)) : "—"}</div>
                     </div>
                   );
                 })}
               </div>
-              {Object.keys(latestFeat.data).filter((k) => !["peak_hz", "flatness", "rms"].includes(k)).length > 0 && (
+              {Object.keys(latestFeat.data).filter((k) => !["peak_hz", "flatness", "db", "rms"].includes(k)).length > 0 && (
                 <div className="text-xs text-zinc-500 mt-2 num truncate">
                   {Object.entries(latestFeat.data)
-                    .filter(([k]) => !["peak_hz", "flatness", "rms"].includes(k))
+                    .filter(([k]) => !["peak_hz", "flatness", "db", "rms"].includes(k))
                     .map(([k, v]) => `${k}=${typeof v === "number" ? v.toFixed(2) : String(v)}`)
                     .join(" · ")}
                 </div>

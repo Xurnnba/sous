@@ -16,6 +16,14 @@ and pickup (ears + fire calls + Dasher handoff). Back of house: inventory, forec
 
 ## Run it
 
+Quickest: one command builds the frontend if needed and serves everything on http://localhost:8000.
+
+```bash
+./start.sh
+```
+
+Step by step:
+
 ```bash
 # backend (Python 3.12)
 python3 -m venv .venv && . .venv/bin/activate
