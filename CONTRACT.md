@@ -121,4 +121,4 @@ Any number of devices may connect (a laptop and two phones = three mics). Mic id
 
 ## Views (v2)
 
-Tabs: **Board** (default) · **Ears** · **Nose** · **Kitchen** · **Storefront** · **Sounds** (phone page).
+Tabs: **Board** (default) · **Ears** · **Nose** · **Orders** (kitchen display + inventory, route #/kitchen) · **Storefront** · **Sounds** (phone page).

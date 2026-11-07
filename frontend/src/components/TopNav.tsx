@@ -6,7 +6,7 @@ export const VIEWS: { id: View; label: string; icon: typeof ChefHat }[] = [
   { id: "board", label: "Board", icon: LayoutList },
   { id: "ears", label: "Ears", icon: Ear },
   { id: "nose", label: "Nose", icon: Wind },
-  { id: "kitchen", label: "Kitchen", icon: ChefHat },
+  { id: "kitchen", label: "Orders", icon: ChefHat },
   { id: "storefront", label: "Storefront", icon: Store },
   { id: "sounds", label: "Sounds", icon: Smartphone },
 ];

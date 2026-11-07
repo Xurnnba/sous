@@ -62,15 +62,16 @@ reverb, added noise. `backend/tests/eval_ear.py` reproduces every number here.
 
 | Scenario | Recall | False positives |
 |---|---|---|
-| Zero-shot, clean | 9/10 | 0 |
+| Zero-shot, clean | 10/10 | 0 |
 | Zero-shot, 4 m across the room (-18 dB, RT60 0.3 s, noise -46 dBFS) | 8/10 | 1 |
 | Few-shot taught through that room, tested later in the same room | 8/10 | 1 |
 | Few-shot, farther and noisier than taught (-26 dB, noise -42 dBFS) | 3/10 | 0 |
 | Few-shot, whisper-level (-32 dB peak, 10 dB above the noise) | 0/10 | 0 |
 
 Through the live server (`tests/e2e_backend.py`, soundtrack streamed as a microphone at 3× speed):
-nine events, all correct, only the plates-crash missed zero-shot; teaching the printer for six seconds
-then replaying it gives `taught · 0.93`.
+all five event kinds detected zero-shot with no false alarms; teaching the printer for six seconds then
+replaying it gives `taught · 0.93`. The nose scenario sequence (spoilage → burning → cleaning → nominal)
+produces exactly one correct event per scenario and nothing on nominal.
 
 What this means for a deployment: out of the box the ears catch most alarms, chimes and phones
 across a room with no false alarms. Teaching in place adds the printer and the clatter. Past

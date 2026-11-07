@@ -100,9 +100,15 @@ class Calibrator:
 
     @property
     def quality(self) -> float:
+        """0-1 confidence in the calibration. A relocation/rebase keeps most of the credit earned so
+        far (the sensor's humidity slope and drift knowledge carry over); only a cold start reads 0."""
+        best = getattr(self, "_best_quality", 0.0)
         if self.status != "ready":
-            return 0.0
-        return round(min(1.0, 0.6 * min(1.0, self.n_nominal / 120.0) + 0.4 * min(1.0, self.rh_range / 8.0)), 3)
+            return round(best * 0.8, 3)
+        q = min(1.0, 0.6 * min(1.0, self.n_nominal / 120.0) + 0.4 * min(1.0, self.rh_range / 8.0))
+        q = max(q, best * 0.8)
+        self._best_quality = max(best, q)
+        return round(q, 3)
 
     # ------------------------------------------------------------------ core
     def compensate(self, steps: Sequence[float], rh: Optional[float]) -> Optional[list[float]]:
