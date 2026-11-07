@@ -1,4 +1,31 @@
 {
-"seq": 19,
-"items": []
+"seq": 20,
+"items": [
+{
+"id": "i19",
+"created": "2026-11-07T20:27:15",
+"updated": "2026-11-07T20:27:15",
+"title": "Avocado runs out in ~17 min: approve the reorder (24 each)",
+"detail": "Sous already pulled Avocado Toast, Guacamole & Chips, Breakfast Burrito from the delivery apps and is promoting Heirloom Tomato Toast at 15% off. Reorder from Paragon Foods is drafted; press 'We got more' when it lands.",
+"urgency": "next",
+"sense": "orders",
+"kind": "stockout",
+"key": "stockout_avocado",
+"status": "open",
+"count": 1,
+"auto": {
+"type": "menu_hide",
+"summary": "3 dishes pulled, substitute promoted, reorder drafted"
+},
+"evidence": {
+"ingredient": "avocado",
+"minutes_to_stockout": 17.994030550098035,
+"on_hand": 6.0,
+"burn_rate_per_min": 0.3334439153748859
+},
+"speak": null,
+"location": null,
+"expires_at": 1794086835.6808534
+}
+]
 }

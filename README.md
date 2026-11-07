@@ -16,7 +16,8 @@ and pickup (ears + fire calls + Dasher handoff). Back of house: inventory, forec
 
 ## Fastest way to demo (no install)
 
-A hosted instance runs on the team VM: **https://novah.exe.xyz:8000/** (Board). Open it on the laptop,
+A hosted instance runs on the team VM: **https://novah.exe.xyz:8000/** (Board; the bare host
+https://novah.exe.xyz/ proxies to the same server). Open it on the laptop,
 press **Listen**, and open the Sound Board link shown on the Ears page on a phone. The link is
 private to the exe.dev account by default; to let a judge's phone open it without logging in, run
 once from your own machine:
