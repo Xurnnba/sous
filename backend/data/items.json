@@ -1,5 +1,5 @@
 {
-"seq": 20,
+"seq": 23,
 "items": [
 {
 "id": "i19",
@@ -26,6 +26,84 @@
 "speak": null,
 "location": null,
 "expires_at": 1794086835.6808534
+},
+{
+"id": "i20",
+"created": "2026-11-07T20:31:22",
+"updated": "2026-11-07T20:31:22",
+"title": "Fries up: plate them for U-10",
+"detail": "Fryer alarm at the front matches U-10, which is cooking fries.",
+"urgency": "now",
+"sense": "hearing",
+"kind": "fryer_alarm",
+"key": "fries_U-10",
+"status": "done",
+"count": 1,
+"auto": null,
+"evidence": {
+"mic": "ssvyzc",
+"location": "front",
+"how": "zero-shot",
+"confidence": 1.0,
+"heard_as": "Beep, bleep",
+"db": -32.0,
+"order_id": "U-10"
+},
+"speak": null,
+"location": "front",
+"expires_at": 1794083572.21387,
+"closed": "2026-11-07T20:31:30",
+"closed_by": "sous"
+},
+{
+"id": "i21",
+"created": "2026-11-07T20:31:36",
+"updated": "2026-11-07T20:31:36",
+"title": "Phone ringing: pick up, likely a phone order",
+"detail": "Heard the landline at the front.",
+"urgency": "now",
+"sense": "hearing",
+"kind": "phone_ring",
+"key": "phone",
+"status": "open",
+"count": 1,
+"auto": null,
+"evidence": {
+"mic": "ssvyzc",
+"location": "front",
+"how": "zero-shot",
+"confidence": 1.0,
+"heard_as": "Ringtone",
+"db": -37.7
+},
+"speak": null,
+"location": "front",
+"expires_at": 1794083556.2891607
+},
+{
+"id": "i22",
+"created": "2026-11-07T20:31:49",
+"updated": "2026-11-07T20:31:56",
+"title": "Something dropped at the front: check for breakage",
+"detail": "Loud clatter picked up by the mic. Twice in 30 seconds.",
+"urgency": "next",
+"sense": "hearing",
+"kind": "clatter",
+"key": "clatter_front",
+"status": "open",
+"count": 2,
+"auto": null,
+"evidence": {
+"mic": "ssvyzc",
+"location": "front",
+"how": "zero-shot",
+"confidence": 1.0,
+"heard_as": "Glass",
+"db": -36.5
+},
+"speak": null,
+"location": "front",
+"expires_at": 1794083636.8663263
 }
 ]
 }

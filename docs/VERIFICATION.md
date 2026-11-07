@@ -19,19 +19,25 @@ What was verified, how, and what could not be verified from the build machine.
 | Nose page during a sensor relocation shows a coherent "Calibrating at <location> · n/6" state | yes |
 | Backend log after the full run | 0 tracebacks |
 
-## Verified earlier from the user's network
+## Verified through the public exe.dev proxy (outside-in, no login)
 
-Requests from a CMU address (128.237.x.x) reached the hosted instance through the exe.dev proxy
-during the first demo session (REST and the live websocket-fed Board), so the proxy path works for a
-logged-in exe.dev user.
+Fetched from the proxy's public address (161.210.92.223, resolved via 1.1.1.1) with no exe.dev
+session cookie, after the owner ran `share set-public`:
+
+| URL | Result |
+|---|---|
+| `https://novah.exe.xyz:8000/api/health` | 200, application/json, ears ready, nose gbdt-fingerprint |
+| `https://novah.exe.xyz/api/health` | 200, same body |
+| `https://novah.exe.xyz:8000/api/sounds/door_chime.wav` | 200, audio/wav, 32,044 bytes (the Sound Board clip) |
+| Live state while the owner's browser had Listen on | one real microphone connected over the proxy websocket: location "front", source mic, model yamnet, 18 windows processed, top class Speech, noise floor -56 dBFS |
+
+The connected mic is the end-to-end proof for the hosted path: browser microphone → `/ws/audio` through
+the TLS proxy → YAMNet on the VM → state back over `/ws`.
 
 ## Not verifiable from the build VM, and why
 
-* **Public proxy access.** Making the link public needs `ssh exe.dev share set-public novah` from a
-  machine with the account's SSH key; the VM has none, and the VM cannot reach its own public
-  address (no egress route), so an end-to-end HTTPS check from inside is impossible.
-* **Real microphone and speaker.** The VM has no audio devices. The mic path was exercised with
-  streamed PCM over the same websocket the browser uses, and the headless browser's fake microphone;
-  a real room still needs one rehearsal.
+* **Speaker playback in the room.** The VM has no audio device. The clips and voice files are served
+  correctly over the proxy (verified above); whether the room's speakers are loud enough for the
+  laptop mic to hear the phone is a rehearsal question, not a software one.
 * **A real gas sensor.** None was available; the classifier is trained and evaluated on the physics
   model, so its accuracy is an upper bound until it sees logged sensor data.
