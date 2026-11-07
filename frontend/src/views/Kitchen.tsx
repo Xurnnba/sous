@@ -45,7 +45,14 @@ function OrderCard({ order, now }: { order: Order; now: number }) {
     <article className={`relative rounded-xl bg-ink-800 border border-ink-700 border-l-4 ${riskBorder[order.late_risk]} p-3 animate-slideIn ${order.status === "fire" ? "border-accent/70 animate-fireBorder" : fire ? "ring-2 ring-accent animate-firePulse" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <span className="num text-3xl font-black leading-none">{order.id}</span>
-        <span className={`pill ${ch.className}`}>{ch.label}</span>
+        <span className="flex items-center gap-1 shrink-0">
+          {fire && (
+            <span className="pill bg-accent text-black gap-1">
+              <Flame size={11} /> Fire
+            </span>
+          )}
+          <span className={`pill ${ch.className}`}>{ch.label}</span>
+        </span>
       </div>
       <ul className="mt-2 space-y-0.5">
         {order.items.map((it, i) => (
@@ -71,11 +78,6 @@ function OrderCard({ order, now }: { order: Order; now: number }) {
           </div>
         </div>
       </div>
-      {fire && (
-        <div className="absolute -top-2 -right-2 inline-flex items-center gap-1 bg-accent text-black text-xs font-black px-2 py-0.5 rounded-md shadow">
-          <Flame size={12} /> FIRE
-        </div>
-      )}
     </article>
   );
 }
@@ -108,8 +110,9 @@ export function Kitchen() {
 
   return (
     <div className="h-full overflow-y-auto p-4 flex flex-col gap-4">
+      <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500 -mb-2 shrink-0">Orders · live tickets → recipe-level inventory → stockout forecast</div>
       {/* ORDER BOARD */}
-      <div className="grid grid-cols-[1fr_320px] gap-4 min-h-[560px] h-[calc(100vh-220px)]">
+      <div className="grid grid-cols-[1fr_320px] gap-4 min-h-[540px] h-[calc(100vh-250px)] shrink-0">
         <div className="grid grid-cols-4 gap-3 min-h-0">
           {COLUMNS.map((col) => {
             const list = active.filter((o) => o.status === col.status).sort((a, b) => a.promised_at - b.promised_at);

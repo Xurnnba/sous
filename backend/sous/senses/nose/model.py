@@ -1,7 +1,8 @@
 """Gradient-boosted fingerprint classifier for the nose.
 
-A ``HistGradientBoostingClassifier`` over the 22 features in ``features.py``, trained on ~6000
-synthetic windows from ``physics.generate_windows`` with class balancing. It is deliberately small
+A ``HistGradientBoostingClassifier`` over the 22 features in ``features.py``, trained on 8000
+synthetic windows from ``physics.generate_windows`` (80 % train, 20 % held out) with class
+balancing; about a third of the episodes are back-to-back scenario sequences in one room. It is deliberately small
 and fast (sub-millisecond inference, <60 s training on a laptop CPU) and lives at
 ``backend/data/nose_model.joblib`` together with its metadata (feature names, classes, held-out
 accuracy, confusion matrix, training-set size).

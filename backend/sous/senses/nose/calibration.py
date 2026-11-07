@@ -7,6 +7,12 @@ trustworthy:
 
 * **Baseline.** Median of the first ``warmup_samples`` readings per step (status ``warming`` ->
   ``ready``). With real hardware the heater needs ~5 min to settle, so use ~300; the demo uses 12.
+* **Re-baseline after a move** (``rebase``). The same median, but over the *latest* ``samples``
+  readings, and only once they are steady (every step's humidity-compensated log R within
+  ``REBASE_MAX_SPREAD``): a sensor just carried out of a smoky line or a freshly bleached walk-in is
+  still shedding that gas, and a baseline taken on the falling edge turns into a phantom anomaly
+  (a permanent offset the classifier happily names) once the film is clean. After
+  ``REBASE_MAX_SAMPLES`` readings it accepts whatever it has rather than stay blind.
 * **Slow adaptation.** While the classifier says nominal the baseline tracks the compensated signal
   with a long time constant so a shift's drift is not an alarm. It is frozen during an anomaly so a
   slow rise cannot hide itself. The pipeline owns that gate; ``adapt(..., nominal=...)`` just obeys.
@@ -31,6 +37,8 @@ RH_SLOPE_MIN, RH_SLOPE_MAX = 0.0, 0.02
 PRIOR_WEIGHT = 25.0        # equivalent nominal samples the prior slope is worth
 FORGET = 0.995             # per-sample forgetting for the slope fit (~200 s memory)
 MIN_RH_RANGE_FOR_FIT = 1.5  # %RH weighted std before the fit is used
+REBASE_MAX_SPREAD = 0.06    # max-min of humidity-compensated log R per step over the rebase window
+REBASE_MAX_SAMPLES = 30     # give up waiting for a stable signal after this many readings
 
 
 class Calibrator:
@@ -52,14 +60,19 @@ class Calibrator:
         self.rh_max = -math.inf
         self._warm: list[list[float]] = []
         self._warm_rh: list[float] = []
+        self._rebasing = False
+        self._rebase_seen = 0
         # exponentially forgotten sums for the slope fit
         self._sw = self._sx = self._sy = self._sxx = self._sxy = 0.0
 
     def rebase(self, samples: int = 6) -> None:
         """The sensor now sees a different room (or the demo moved it). The humidity slope is a
         property of the sensor and is kept; the clean-air baseline, the RH reference and the slope
-        fit's running sums belong to the old environment and are re-collected over the next
-        ``samples`` readings. Status goes back to ``warming`` meanwhile."""
+        fit's running sums belong to the old environment and are re-collected over at least the next
+        ``samples`` readings - more if the signal is still settling (see the module docstring).
+        Status goes back to ``warming`` meanwhile."""
+        self._rebasing = True
+        self._rebase_seen = 0
         self.status = "warming"
         self.baseline = None
         self.baseline_init = None
@@ -100,16 +113,36 @@ class Calibrator:
             self._warm.append(steps)
             if rh is not None:
                 self._warm_rh.append(float(rh))
+            if self._rebasing:
+                self._rebase_seen += 1
+                self._warm = self._warm[-self.warmup_samples:]          # sliding: newest readings only
+                self._warm_rh = self._warm_rh[-self.warmup_samples:]
+                if (len(self._warm) >= self.warmup_samples and self._rebase_seen < REBASE_MAX_SAMPLES
+                        and not self._steady()):
+                    return None
             if len(self._warm) >= self.warmup_samples:
                 cols = list(zip(*self._warm))
                 self.baseline = [_median(c) for c in cols]
                 self.baseline_init = list(self.baseline)
                 self.rh_ref = _median(self._warm_rh) if self._warm_rh else None
                 self.status = "ready"
+                self._rebasing = False
             else:
                 return None
         corr = self._rh_factor(rh)
         return [b / (s * corr) for b, s in zip(self.baseline, steps)]
+
+    def _steady(self) -> bool:
+        """True when every step's humidity-compensated log R spans less than REBASE_MAX_SPREAD over
+        the rebase window (RH-compensated with the sensor's slope, against the window's own RH)."""
+        rhs = self._warm_rh if len(self._warm_rh) == len(self._warm) else None
+        rh0 = _median(rhs) if rhs else 0.0
+        for i in range(N_STEPS):
+            vals = [math.log(w[i]) + (self.rh_slope * (rhs[j] - rh0) if rhs else 0.0)
+                    for j, w in enumerate(self._warm)]
+            if max(vals) - min(vals) > REBASE_MAX_SPREAD:
+                return False
+        return True
 
     def _rh_factor(self, rh: Optional[float]) -> float:
         if rh is None or self.rh_ref is None:

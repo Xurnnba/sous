@@ -96,6 +96,12 @@ pre-recorded or pre-ordered; the judge picks.
    more** on the Storefront; the item closes itself.
 5. **Trust.** Every item shows its evidence. Every event says how it was decided. Dismiss anything.
 
+Before judging, start from a clean calibration so nothing learned during testing leaks in:
+
+```bash
+curl -X DELETE http://localhost:8000/api/ear/prototypes/_all
+```
+
 Fallbacks if the room is hostile: a second phone as a "front" mic placed near the speaker; the
 inject buttons on the Ears page; the soundtrack button, which streams the same clips straight into
 the classifier with a truth-vs-detected timeline.

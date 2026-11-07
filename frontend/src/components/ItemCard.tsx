@@ -79,14 +79,20 @@ export function ItemCard({ item, now, onClose, compact = false }: { item: Item; 
   const m = urgencyMeta[item.urgency];
   const chip = SENSE_CHIP[item.sense];
   const Icon = chip.icon;
-  const where = item.sense === "orders" ? "orders" : `${chip.verb} ${item.location ?? "kitchen"}`;
+  // Merged items keep their first location; the evidence carries the latest one (which the detail text describes).
+  const loc = (typeof item.evidence?.location === "string" && item.evidence.location) || item.location || "kitchen";
+  const where = item.sense === "orders" ? "orders" : `${chip.verb} ${loc}`;
   return (
     <article className={`relative rounded-xl bg-ink-800 border border-ink-700 border-l-4 ${m.border} ${compact ? "p-3" : "p-4"} animate-slideIn`}>
       <div className="flex items-start justify-between gap-3">
-        <h3 className={`font-bold leading-tight ${compact ? "text-base" : "text-xl"}`}>{item.title}</h3>
+        <h3 className={`font-bold leading-snug ${compact ? "text-base" : "text-lg"}`}>{item.title}</h3>
         <span className="num text-[11px] text-zinc-500 whitespace-nowrap shrink-0 mt-1">{ago(item.updated || item.created, now)}</span>
       </div>
-      {!compact && item.detail && <p className="text-sm text-zinc-400 leading-snug mt-1">{item.detail}</p>}
+      {!compact && item.detail && (
+        <p className={`text-sm text-zinc-400 leading-snug mt-1 ${open ? "" : "line-clamp-2"}`} title={item.detail}>
+          {item.detail}
+        </p>
+      )}
       <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
         <span className={`pill border normal-case tracking-normal gap-1 ${chip.className}`}>
           <Icon size={11} /> {where}

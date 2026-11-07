@@ -123,7 +123,7 @@ export function Sounds() {
                   <div className="text-sm text-zinc-400 leading-snug">{c.hint}</div>
                 </div>
               </div>
-              <div className={`mt-3 text-sm font-semibold min-h-[20px] ${fb?.status === "heard" ? "text-ok" : fb?.status === "missed" ? "text-zinc-500" : fb?.status === "waiting" ? "text-accent-soft animate-pulse" : "text-transparent"}`}>{fb?.text ?? "·"}</div>
+              <div className={`mt-3 text-sm font-semibold min-h-[20px] ${fb?.status === "heard" ? "text-ok" : fb?.status === "missed" ? "text-zinc-500" : fb?.status === "waiting" ? "text-accent-soft animate-pulse" : "text-zinc-600 font-normal"}`}>{fb?.text ?? "tap to play"}</div>
             </button>
           );
         })}

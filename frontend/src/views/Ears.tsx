@@ -25,7 +25,7 @@ function LevelWithFloor({ level, floor }: { level: number; floor: number }) {
   );
 }
 
-function MicCard({ mic, isThisDevice }: { mic: MicT; isThisDevice: boolean }) {
+function MicCard({ mic, isThisDevice, names }: { mic: MicT; isThisDevice: boolean; names: Record<string, string> }) {
   const modelTone = mic.model === "yamnet" ? "bg-ok/15 text-ok" : mic.model === "loading" ? "bg-warn/15 text-warn" : "bg-ink-700 text-zinc-300";
   return (
     <article className={`rounded-xl border bg-ink-800 p-4 flex flex-col gap-3 ${mic.active ? "border-ink-600" : "border-ink-700 opacity-60"}`}>
@@ -63,7 +63,7 @@ function MicCard({ mic, isThisDevice }: { mic: MicT; isThisDevice: boolean }) {
       {mic.teaching && (
         <div className="flex items-center gap-3 rounded-lg bg-accent/10 border border-accent/40 px-3 py-2">
           <Ring value={1 - mic.teaching.remaining_s / 4} size={40} stroke={4} color="#ff7a1a">
-            <span className="num text-sm font-black">{mic.teaching.remaining_s}</span>
+            <span className="num text-sm font-black">{Math.ceil(mic.teaching.remaining_s)}</span>
           </Ring>
           <div className="text-sm">
             <div className="font-bold">Teaching “{titleCase(mic.teaching.label)}”</div>
@@ -90,7 +90,7 @@ function MicCard({ mic, isThisDevice }: { mic: MicT; isThisDevice: boolean }) {
       </div>
       {Object.keys(mic.taught).filter((k) => k !== "_background").length > 0 && (
         <div className="text-[11px] text-zinc-400 num">
-          taught: {Object.entries(mic.taught).filter(([k]) => k !== "_background").map(([k, v]) => `${k} ${v.toFixed(2)}`).join(" · ")}
+          taught: {Object.entries(mic.taught).filter(([k]) => k !== "_background").map(([k, v]) => `${names[k] ?? titleCase(k)} ${v.toFixed(2)}`).join(" · ")}
         </div>
       )}
     </article>
@@ -100,7 +100,7 @@ function MicCard({ mic, isThisDevice }: { mic: MicT; isThisDevice: boolean }) {
 export function Ears({ audio }: { audio: AudioStreamState }) {
   const { state, events, api, mock } = useSous();
   const [busy, setBusy] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
   const [teachError, setTeachError] = useState<string | null>(null);
   const teachingRef = useRef<{ label: string; mic: string } | null>(null);
   const startedAt = useRef<number | null>(null);
@@ -123,8 +123,12 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
     if (mic && mic.teaching) return;
     const proto = ears.prototypes.find((p) => p.label === t.label);
     teachingRef.current = null;
-    setToast(proto ? `Learned ${proto.examples} example${proto.examples === 1 ? "" : "s"} of “${proto.name}”` : `Finished teaching “${titleCase(t.label)}”`);
-    const h = window.setTimeout(() => setToast(null), 4000);
+    setToast(
+      proto
+        ? { ok: true, text: `Learned ${proto.examples} example${proto.examples === 1 ? "" : "s"} of “${proto.name}”` }
+        : { ok: false, text: `Nothing captured for “${titleCase(t.label)}” — the sound was not loud enough above the room. Try again closer to the mic.` },
+    );
+    const h = window.setTimeout(() => setToast(null), 6000);
     return () => window.clearTimeout(h);
   }, [ears]);
 
@@ -162,17 +166,19 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
   };
 
   const teachingNow = ears.mics.find((m) => m.teaching)?.teaching ?? null;
+  const liveMics = ears.mics.filter((m) => m.active).length;
+  const protoNames = Object.fromEntries(ears.prototypes.map((p) => [p.label, p.name]));
 
   return (
     <div className="h-full overflow-y-auto p-4">
       <div className="max-w-[1400px] mx-auto grid grid-cols-[1.25fr_1fr] gap-4 content-start">
         <header className="col-span-2 flex items-center justify-between">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Microphones · few-shot sound events</div>
-            <h1 className="text-2xl font-black">Ears</h1>
+            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Ears · microphones → few-shot sound events</div>
+            <h1 className={`text-4xl font-black leading-tight ${liveMics ? "text-ok" : "text-zinc-500"}`}>{liveMics ? `Listening on ${liveMics} mic${liveMics === 1 ? "" : "s"}` : "No mic connected"}</h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`pill border ${ears.active ? "bg-ok/15 text-ok border-ok/40" : "bg-ink-800 text-zinc-400 border-ink-600"}`}>{ears.active ? `${ears.mics.filter((m) => m.active).length} live` : "inactive"}</span>
+            <span className={`pill border ${liveMics ? "bg-ok/15 text-ok border-ok/40" : "bg-ink-800 text-zinc-400 border-ink-600"}`}>{liveMics ? `${liveMics} live` : "no live mic"}</span>
             <span className="pill bg-ink-800 text-zinc-300 border border-ink-600">model · {ears.model}</span>
             <span className="pill bg-ink-800 text-zinc-300 border border-ink-600">provider · {state.providers.ears}</span>
           </div>
@@ -184,7 +190,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
             <div className="flex flex-col gap-3">
               {ears.mics.length === 0 && <Empty>No microphone connected. Tap Listen on this device, or open the sound board on a phone.</Empty>}
               {ears.mics.map((m) => (
-                <MicCard key={m.mic} mic={m} isThisDevice={m.mic === audio.micId} />
+                <MicCard key={m.mic} mic={m} isThisDevice={m.mic === audio.micId} names={protoNames} />
               ))}
             </div>
           </Panel>
@@ -235,7 +241,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
             {teachingNow && (
               <div className="mt-4 flex items-center gap-4 rounded-xl bg-accent/10 border border-accent/40 px-4 py-3">
                 <Ring value={1 - teachingNow.remaining_s / 4} size={64} stroke={6} color="#ff7a1a">
-                  <span className="num text-xl font-black">{teachingNow.remaining_s}</span>
+                  <span className="num text-xl font-black">{Math.ceil(teachingNow.remaining_s)}</span>
                 </Ring>
                 <div>
                   <div className="text-lg font-bold">Make the sound now</div>
@@ -245,7 +251,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
                 </div>
               </div>
             )}
-            {toast && <div className="mt-3 rounded-lg bg-ok/15 border border-ok/40 text-ok px-3 py-2 text-sm font-semibold animate-slideIn">{toast}</div>}
+            {toast && <div className={`mt-3 rounded-lg border px-3 py-2 text-sm font-semibold animate-slideIn ${toast.ok ? "bg-ok/15 border-ok/40 text-ok" : "bg-warn/10 border-warn/40 text-warn"}`}>{toast.text}</div>}
             {teachError && <div className="mt-3 text-xs text-bad">{teachError}</div>}
 
             <div className="mt-4">
@@ -274,7 +280,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
           <Panel title="Sound board on your phone" right={<Smartphone size={14} className="text-zinc-500" />}>
             <div className="flex items-center gap-4">
               <div className="flex flex-col items-center gap-1.5 shrink-0">
-                <QrCode text={boardUrl.url} size={128} />
+                {boardUrl.source === "pending" ? <div className="rounded-lg bg-ink-800 animate-pulse" style={{ width: 128, height: 128 }} /> : <QrCode text={boardUrl.url} size={128} />}
                 <a href={boardUrl.url} className="num text-[11px] text-accent-soft hover:underline break-all text-center max-w-[160px]">
                   {boardUrl.url.replace(/^https?:\/\//, "")}
                 </a>
@@ -282,7 +288,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
               <div className="text-sm text-zinc-400">
                 <p>Scan to open the sound board. Tap a clip on the phone; this laptop listens and the board lights up when Sous hears it.</p>
                 <p className="text-[11px] text-zinc-500 mt-1.5">
-                  {boardUrl.source === "lan" ? `LAN address from /api/hosts${boardUrl.ip ? ` (${boardUrl.ip})` : ""}` : boardUrl.loopback ? "This page is on localhost and /api/hosts returned no LAN address — a phone cannot reach this URL." : "Using this page's own address."}
+                  {boardUrl.source === "lan" ? `LAN address from /api/hosts${boardUrl.ip ? ` (${boardUrl.ip})` : ""}` : boardUrl.source === "pending" ? "Looking up this laptop's LAN address…" : boardUrl.loopback ? "This page is on localhost and /api/hosts returned no LAN address — a phone cannot reach this URL." : "Using this page's own address."}
                 </p>
               </div>
             </div>
@@ -299,13 +305,13 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
                 <table className="w-full text-sm">
                   <thead className="text-[10px] uppercase tracking-widest text-zinc-500 sticky top-0 bg-ink-900">
                     <tr className="text-left">
-                      <th className="py-1 font-semibold">Time</th>
-                      <th className="py-1 font-semibold">Location</th>
-                      <th className="py-1 font-semibold">Kind</th>
-                      <th className="py-1 font-semibold">How</th>
-                      <th className="py-1 font-semibold text-right">Conf.</th>
-                      <th className="py-1 font-semibold">Heard as</th>
-                      <th className="py-1 font-semibold text-right">dB</th>
+                      <th className="py-1 px-2 first:pl-0 font-semibold">Time</th>
+                      <th className="py-1 px-2 first:pl-0 font-semibold">Location</th>
+                      <th className="py-1 px-2 first:pl-0 font-semibold">Kind</th>
+                      <th className="py-1 px-2 first:pl-0 font-semibold">How</th>
+                      <th className="py-1 px-2 first:pl-0 font-semibold text-right">Conf.</th>
+                      <th className="py-1 px-2 first:pl-0 font-semibold">Heard as</th>
+                      <th className="py-1 px-2 first:pl-0 font-semibold text-right">dB</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -347,24 +353,40 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
   );
 }
 
-type BoardUrl = { url: string; source: "lan" | "page"; ip?: string; loopback: boolean };
+type BoardUrl = { url: string; source: "lan" | "page" | "pending"; ip?: string; loopback: boolean };
+
+// The LAN address does not change while the page is open: remember it so revisiting Ears is instant.
+let lanCache: BoardUrl | null = null;
 
 /** Phone-reachable sound-board URL: GET /api/hosts when the page is on localhost, else the page's own address. */
 function useSoundBoardUrl(api: SousApi): BoardUrl {
   const loopback = isLoopbackHost();
-  const [value, setValue] = useState<BoardUrl>({ url: soundBoardUrl(), source: "page", loopback });
+  const [value, setValue] = useState<BoardUrl>(() => lanCache ?? { url: soundBoardUrl(), source: loopback ? "pending" : "page", loopback });
   useEffect(() => {
-    if (!loopback) return;
+    if (!loopback || lanCache) return;
     let alive = true;
-    api
-      .hosts()
-      .then((r) => {
-        const h = r.hosts?.[0];
-        if (alive && h?.url) setValue({ url: soundBoardUrlOn(h.url), source: "lan", ip: h.ip, loopback });
-      })
-      .catch(() => undefined);
+    let timer: number | null = null;
+    const attempt = (n: number) => {
+      api
+        .hosts()
+        .then((r) => {
+          const h = r.hosts?.[0];
+          if (!alive) return;
+          if (h?.url) {
+            lanCache = { url: soundBoardUrlOn(h.url), source: "lan", ip: h.ip, loopback };
+            setValue(lanCache);
+          } else throw new Error("no LAN host");
+        })
+        .catch(() => {
+          if (!alive) return;
+          if (n < 3) timer = window.setTimeout(() => attempt(n + 1), 1500);
+          else setValue((v) => ({ ...v, source: "page" }));
+        });
+    };
+    attempt(0);
     return () => {
       alive = false;
+      if (timer !== null) window.clearTimeout(timer);
     };
   }, [api, loopback]);
   return value;
@@ -379,21 +401,21 @@ function EventRow({ e }: { e: Event }) {
   const how = typeof d.how === "string" ? d.how : e.kind === "taught" ? "taught" : "—";
   return (
     <tr className="border-t border-ink-700/70 animate-slideIn">
-      <td className="py-1.5 num text-xs text-zinc-400">{clockTime(e.t)}</td>
-      <td className="py-1.5 capitalize">{typeof d.location === "string" ? d.location : "—"}</td>
-      <td className="py-1.5">
+      <td className="py-1.5 px-2 first:pl-0 num text-xs text-zinc-400">{clockTime(e.t)}</td>
+      <td className="py-1.5 px-2 first:pl-0 capitalize">{typeof d.location === "string" ? d.location : "—"}</td>
+      <td className="py-1.5 px-2 first:pl-0">
         <span className="inline-flex items-center gap-1.5 font-semibold">
           <span className={`w-2 h-2 rounded-sm ${kindColor[e.kind] ?? "bg-zinc-400"}`} /> {e.kind.replace(/_/g, " ")}
         </span>
       </td>
-      <td className="py-1.5">
+      <td className="py-1.5 px-2 first:pl-0">
         <span className={`pill ${how === "taught" ? "bg-violet-500/15 text-violet-300" : how === "injected" ? "bg-ink-700 text-zinc-400" : "bg-sky-500/15 text-sky-300"}`}>{how}</span>
       </td>
-      <td className="py-1.5 num text-right">{conf}</td>
-      <td className="py-1.5 text-zinc-300 truncate max-w-[180px]" title={heardAs ?? undefined}>
+      <td className="py-1.5 px-2 first:pl-0 num text-right">{conf}</td>
+      <td className="py-1.5 px-2 first:pl-0 text-zinc-300 truncate max-w-[180px]" title={heardAs ?? undefined}>
         {heardAs ?? "—"}
       </td>
-      <td className="py-1.5 num text-right text-zinc-400">{db}</td>
+      <td className="py-1.5 px-2 first:pl-0 num text-right text-zinc-400">{db}</td>
     </tr>
   );
 }

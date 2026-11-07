@@ -11,7 +11,7 @@ type Stage = { id: string; title: string; sub: string; live: (s: Smell) => boole
 const STAGES: Stage[] = [
   { id: "sensor", title: "BME688 sensor", sub: "4-step heater sweep", live: (s) => s.device === "serial" || s.device === "http", note: (s) => (s.device === "replay" ? "replayed" : s.device === "none" ? "none" : s.sensor_id) },
   { id: "esp32", title: "ESP32", sub: "1 Hz JSON over Wi-Fi", live: (s) => s.device === "serial" || s.device === "http" },
-  { id: "ingest", title: "POST /api/sensor/reading", sub: "same path for board & replay", live: (s) => s.device !== "none" },
+  { id: "ingest", title: "Ingest", sub: "/api/sensor/reading", live: (s) => s.device !== "none" },
   { id: "cal", title: "Calibration", sub: "baseline · RH slope", live: (s) => s.calibration.quality > 0, note: (s) => `${pct(s.calibration.quality)} · ${s.calibration.status}` },
   { id: "fp", title: "Fingerprint", sub: "log-ratios per step", live: (s) => !!s.ratios, note: (s) => (s.ratios ? s.ratios.map((r) => r.toFixed(2)).join(" / ") : null) },
   { id: "clf", title: "GBDT classifier", sub: "6 classes", live: (s) => !!s.probs, note: (s) => (s.probs ? `${winnerOf(s.probs)} ${pct(Math.max(...Object.values(s.probs)))}` : null) },
@@ -81,7 +81,11 @@ export function Nose() {
   const cal = smell.calibration;
   const warmup = cal.warmup && typeof cal.warmup === "object" ? (cal.warmup as { have?: number; need?: number }) : null;
   // Not "ready" means the baseline is being (re)built — warming at boot, or a rebase after the sensor moved.
-  const calibrating = smell.device !== "none" && smell.status !== "offline" && cal.status !== "ready";
+  // The backend reports "calibrating"/"warming" in smell.status while it rebuilds the baseline (e.g. after a
+  // scenario relocates the sensor) even when calibration.status still reads "ready" — treat either as calibrating.
+  const calibrating = smell.device !== "none" && smell.status !== "offline" && smell.status !== "anomaly" && (cal.status !== "ready" || smell.status === "calibrating" || smell.status === "warming");
+  const nNominal = typeof cal.n_nominal === "number" ? cal.n_nominal : null;
+  const samplesValue = warmup && typeof warmup.have === "number" && typeof warmup.need === "number" && warmup.have < warmup.need ? `${warmup.have}/${warmup.need}` : cal.samples || nNominal || 0;
   const anomalyLabel = smell.anomaly ? smellKindLabel[smell.anomaly.kind] ?? titleCase(smell.anomaly.kind) : null;
   const statusWord = smell.status === "anomaly" && anomalyLabel ? anomalyLabel : calibrating ? "Calibrating" : titleCase(smell.status);
   const statusTone = smell.status === "anomaly" ? (smell.anomaly?.urgency === "now" ? "text-bad" : "text-warn") : calibrating ? "text-warn" : smell.status === "nominal" ? "text-ok" : smell.status === "offline" ? "text-zinc-500" : "text-warn";
@@ -104,14 +108,14 @@ export function Nose() {
       <div className="max-w-[1400px] mx-auto flex flex-col gap-4">
         {/* HERO */}
         <header className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-baseline gap-4">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Nose · VOC heater-sweep fingerprint</div>
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Nose · VOC heater-sweep fingerprint</div>
+            <div className="flex items-baseline gap-3">
               <h1 className={`text-4xl font-black leading-tight ${statusTone}`}>{statusWord}</h1>
-            </div>
-            <div className="text-lg text-zinc-300">
-              at <span className="font-bold capitalize text-zinc-100">{smell.location}</span>
-              {smell.anomaly && <span className="text-sm text-zinc-500 ml-2">since {clockTime(smell.anomaly.since)}</span>}
+              <span className="text-lg text-zinc-300">
+                at <span className="font-bold capitalize text-zinc-100">{smell.location}</span>
+                {smell.anomaly && <span className="text-sm text-zinc-500 ml-2">since {clockTime(smell.anomaly.since)}</span>}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -177,7 +181,7 @@ export function Nose() {
               </p>
             )}
             {!probs ? (
-              <Empty>No classification yet.</Empty>
+              <Empty>{calibrating ? "Rebuilding the clean-air baseline — classification resumes once it settles." : "No classification yet."}</Empty>
             ) : (
               <div className={`flex flex-col gap-2 transition-opacity ${calibrating ? "opacity-40 grayscale" : ""}`} aria-disabled={calibrating}>
                 {Object.entries(probs)
@@ -210,7 +214,7 @@ export function Nose() {
             )}
           </Panel>
 
-          <Panel title="Calibration" right={<span className="pill bg-ink-800 text-zinc-300 border border-ink-600">{cal.status}</span>}>
+          <Panel title="Calibration" right={<span className={`pill border ${calibrating ? "bg-warn/15 text-warn border-warn/40" : "bg-ink-800 text-zinc-300 border-ink-600"}`}>{calibrating ? "calibrating" : cal.status}</span>}>
             <div className="flex items-center gap-4">
               <Ring value={cal.quality} size={88} stroke={9} color={calColor}>
                 <div className="text-center">
@@ -220,7 +224,7 @@ export function Nose() {
               </Ring>
               <div className="grid grid-cols-2 gap-2 flex-1">
                 <Stat label="RH slope" value={cal.rh_slope === null ? "—" : cal.rh_slope.toFixed(3)} sub="per %RH" />
-                <Stat label="Samples" value={cal.samples} sub="baseline windows" />
+                <Stat label="Samples" value={samplesValue} sub="clean-air windows" />
               </div>
             </div>
             <div className="mt-4">

@@ -288,8 +288,9 @@ class EarClassifier:
             top_sim = max((s for s, l in nb if l == winner), default=0.0)
             if winner != BACKGROUND and top_sim >= CFG["few_thr"] and votes[winner] - runner >= CFG["few_margin"]:
                 return winner, "taught", top_sim
-            if winner == BACKGROUND and top_sim >= CFG["few_thr"]:
-                return None, "", 0.0            # confidently just the room
+            strong_zs = any(zs.get(k, 0.0) >= ZERO_SHOT_THRESHOLD[k] + 0.15 for k in EVENT_LABELS)
+            if winner == BACKGROUND and top_sim >= CFG["few_thr"] and not strong_zs:
+                return None, "", 0.0            # confidently just the room (unless the prior shouts otherwise)
             if winner in taught and top_sim >= CFG["few_thr"] - 0.08:
                 return None, "", 0.0            # near a taught sound but ambiguous: stay quiet rather than guess
         if CFG["zero_shot"]:

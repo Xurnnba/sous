@@ -57,7 +57,9 @@ export function soundBoardUrl(): string {
 
 /** Sound-board URL on a backend-advertised LAN base such as "http://192.168.1.20:8000". */
 export function soundBoardUrlOn(base: string): string {
-  return `${base.replace(/\/+$/, "")}/#/sounds`;
+  // /api/hosts may already return the full ".../#/sounds" URL; keep only origin + path.
+  const root = base.split("#")[0].replace(/\/+$/, "");
+  return `${root}/#/sounds`;
 }
 
 /** True when the page is served from a loopback host a phone could not reach. */

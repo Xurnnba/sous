@@ -11,7 +11,13 @@ for ``SUSTAIN_SAMPLES`` consecutive readings while the fingerprint deviation is 
 cleared only after ``CLEAR_SAMPLES`` consecutive nominal/quiet readings. A persistent, large
 deviation the model cannot name becomes an ``unknown`` event after a longer sustain. A slow anomaly
 that the model re-reads as burning with high confidence is re-emitted as burning (escalation).
-Baseline adaptation happens only while the pipeline itself is nominal.
+A falling-edge guard keeps a decaying signal (deviation down >15 % over 6 s) from starting a new
+anomaly. Baseline adaptation happens only while the pipeline itself is nominal.
+
+Relocation (a reading arrives with a new ``location``): the calibrator re-baselines on the new
+room (``Calibrator.rebase``: at least ``REBASE_SAMPLES`` readings, longer if the signal has not
+settled), and the window, the hysteresis counters and the falling-edge history are all dropped so
+the old room's signal cannot leak into the new room's judgement.
 
 Events: ``{sense:"smell", kind, label, detail, severity, data}`` where kind is the class label on a
 new anomaly, ``voc_clear`` when the air returns to nominal, ``device_connected``, ``device_offline``,
@@ -41,7 +47,8 @@ UNKNOWN_DEVIATION = 0.26     # (~30 %) floor for an "unknown" event
 ESCALATE_CONFIDENCE = 0.7
 ADAPT_BELOW_DEVIATION = 0.06
 OFFLINE_AFTER_S = 6.0
-REBASE_SAMPLES = 6           # quick re-baseline after a relocation (sensor is known-good; only the room changed)
+REBASE_SAMPLES = 6           # quick re-baseline after a relocation (sensor is known-good; only the room changed);
+                             # the calibrator waits longer if the signal is still settling
 
 URGENCY = {"burning": "now", "oil_degraded": "next", "unknown": "next", "spoilage_produce": "today",
            "spoilage_protein": "today", "cleaning": "info", "door_open": "info"}
@@ -86,6 +93,7 @@ class NosePipeline:
         self._streak = 0
         self._quiet_streak = 0
         self._unknown_streak = 0
+        self._devs: deque = deque(maxlen=60)    # (t, deviation) history for the falling-edge guard
         self._announced = False
 
     def _ensure_model(self) -> NoseModel:
@@ -166,9 +174,7 @@ class NosePipeline:
         label = pred["label"]
         # falling-edge guard: a decaying tail (after a cleaning spike or a cleared anomaly) is never a
         # *new* finding, whatever the classifier thinks of its shape
-        devs = getattr(self, "_devs", None)
-        if devs is None:
-            devs = self._devs = deque(maxlen=60)
+        devs = self._devs
         devs.append((t, dev))
         past = [d for (tt, d) in devs if t - tt >= 6.0]
         falling = bool(past) and dev < 0.85 * past[-1]
@@ -239,6 +245,7 @@ class NosePipeline:
                            "data": {"previous": prev, "reason": "relocated", "location": self.location}})
         self.anomaly = None
         self._window.clear()
+        self._devs.clear()       # the old room's deviation history must not make the new room look "falling"
         self.calibrator.rebase(self.rebase_samples)
         self._streak = self._quiet_streak = self._unknown_streak = 0
         self._streak_label = None
@@ -247,7 +254,7 @@ class NosePipeline:
         self.prediction = None
         self.on_event({"sense": "smell", "kind": "relocated", "severity": "info",
                        "label": f"Nose now watching the {location}",
-                       "detail": f"moved from {self.location}; re-baselining over {self.rebase_samples} readings",
+                       "detail": f"moved from {self.location}; re-baselining over {self.rebase_samples}+ readings (waits for a steady signal)",
                        "data": {"from": self.location, "to": location}})
 
     # ------------------------------------------------------------------ housekeeping

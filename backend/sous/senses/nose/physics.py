@@ -90,16 +90,29 @@ SCENARIOS: dict[str, dict] = {
                              dtemp=(0.0, 0.0), drh=(0.0, 0.0), env_tau=5.0),
 }
 SCENARIO_CLASS = {name: s["cls"] for name, s in SCENARIOS.items()}
+RESIDUAL_TAU_S = 10.0     # decay of gas left by a sustained scenario when another one starts in the same room
+ONSET_MARGIN_S = 4.0      # seconds of clean air after the baseline is ready before a stimulus starts
 DEMO_SCENARIOS = ("spoilage_walkin", "spoilage_protein", "fryer_oil", "burning", "cleaning",
                   "door_open", "nominal")
 
 
 def response_ratio(gas: str, conc: float, gain: float) -> list[float]:
     """Per-step ``baseline / R`` for ``conc`` of gas family ``gas`` on a sensor with ``gain``."""
-    if conc <= 0.0 or gas == "nominal":
-        return [1.0] * N_STEPS
-    c = conc ** RESPONSE_EXPONENT
-    return [max(0.25, 1.0 + gain * s * c) for s in SENSITIVITY[gas]]
+    return mixture_ratio({gas: conc}, gain)
+
+
+def mixture_ratio(concs: dict, gain: float) -> list[float]:
+    """Per-step ``baseline / R`` for several gas families at once. Each family's response
+    ``gain * s_step * conc ** 0.6`` is summed per step (a first-order approximation; real films
+    interact non-linearly) and the ratio is floored at 0.25."""
+    out = [1.0] * N_STEPS
+    for gas, conc in concs.items():
+        if conc <= 0.0 or gas == "nominal":
+            continue
+        c = conc ** RESPONSE_EXPONENT
+        for i, sv in enumerate(SENSITIVITY[gas]):
+            out[i] += gain * sv * c
+    return [max(0.25, r) for r in out]
 
 
 @dataclass
@@ -133,6 +146,17 @@ class Simulator:
     the HTTP endpoint would. ``set_scenario(name)`` accepts the names in ``SCENARIOS`` plus ``"stop"``.
     If the pipeline has no baseline yet the stimulus is held back until it does (plus a few seconds),
     otherwise the baseline would be contaminated - same behaviour as the old single-channel simulator.
+    The hold is re-checked every step, so a re-baseline that takes longer than expected still gets
+    clean air.
+
+    Switching scenario does not re-label gas already in the air: whatever the previous scenario left
+    behind becomes a *residual* of its own gas family that keeps decaying with that scenario's decay
+    time constant (``RESIDUAL_TAU_S`` if it had none) and adds to the response. Pressing ``nominal``
+    during a cleaning spike therefore shows the chlorine tail fading, not an instant step to clean
+    air. A scenario at a different location moves the sensor to another room: the old room's gas
+    and its temperature/humidity transient are left behind (ambient becomes the new room's), so the
+    pipeline re-baselines on that room's clean air. Film desorption after a move (seconds on a
+    real sensor) is not modelled.
     """
 
     def __init__(self, pipeline=None, seed: int = 3, physics: Optional[SensorPhysics] = None,
@@ -153,7 +177,7 @@ class Simulator:
         self._dtemp = 0.0
         self._drh = 0.0
         self._params: dict = {}
-        self._pending_delay = 0.0
+        self._residual: dict[str, list[float]] = {}   # gas -> [conc, decay_tau] left by earlier scenarios
 
     # ------------------------------------------------------------------ control
     def set_scenario(self, name: str) -> None:
@@ -171,6 +195,16 @@ class Simulator:
         self.scenario = name
         if self.p is not None:
             self.p.scenario = name
+        if s["location"] != self.location:
+            # different room: the old room's gas and its temp/RH transient stay behind
+            self._residual.clear()
+            self._dtemp = self._drh = 0.0
+        elif self._conc > 1e-4 and self._gas != "nominal":
+            # same room: what the previous scenario put in the air stays and decays as itself
+            old_tau = self._params.get("decay_tau") or RESIDUAL_TAU_S
+            prev = self._residual.get(self._gas, [0.0, old_tau])
+            self._residual[self._gas] = [prev[0] + self._conc, max(prev[1], old_tau)]
+        self._conc = 0.0
         self.location = s["location"]
         self._gas = s["gas"]
         self._params = dict(
@@ -184,9 +218,9 @@ class Simulator:
         if self.p is not None:
             cal = getattr(self.p, "calibrator", None)
             if cal is not None and cal.status != "ready":
-                delay = cal.samples_remaining + 4.0
+                delay = cal.samples_remaining + ONSET_MARGIN_S
             elif getattr(self.p, "location", self.location) != self.location:
-                delay = getattr(self.p, "rebase_samples", 6) + 4.0
+                delay = getattr(self.p, "rebase_samples", 6) + ONSET_MARGIN_S
         self.onset_t = self._t + delay
 
     @property
@@ -198,6 +232,11 @@ class Simulator:
         if not self.running:
             return None
         self._t += 1.0
+        # still re-baselining (e.g. the calibrator is waiting for a stable signal): keep holding
+        cal = getattr(self.p, "calibrator", None) if self.p is not None else None
+        if (cal is not None and cal.status != "ready" and self.onset_t is not None
+                and self._t >= self.onset_t - ONSET_MARGIN_S):
+            self.onset_t = self._t + ONSET_MARGIN_S
         rd = self.reading(self._t)
         if self.p is not None:
             self.p.ingest(rd)
@@ -219,17 +258,27 @@ class Simulator:
         b = 1.0 - math.exp(-1.0 / max(env_tau, 0.1))
         self._dtemp += b * (dtemp_t - self._dtemp)
         self._drh += b * (drh_t - self._drh)
+        for gas in list(self._residual):
+            c, rtau = self._residual[gas]
+            c *= math.exp(-1.0 / max(rtau, 0.1))
+            if c < 1e-4:
+                del self._residual[gas]
+            else:
+                self._residual[gas][0] = c
         # slow baseline drift: random walk in log space, mildly mean-reverting so it stays bounded
         self._drift = 0.995 * self._drift + r.gauss(0.0, ph.drift_sd)
 
         temp = LOCATION_TEMP_C[self.location] + self._dtemp + r.gauss(0.0, 0.05)
         rh = LOCATION_RH[self.location] + self._drh + r.gauss(0.0, 0.3)
-        ratios = response_ratio(self._gas, self._conc, ph.gain)
+        concs = {g: c for g, (c, _) in self._residual.items()}
+        concs[self._gas] = concs.get(self._gas, 0.0) + self._conc
+        ratios = mixture_ratio(concs, ph.gain)
         env = math.exp(self._drift - ph.rh_slope * (rh - ph.rh_ref) - TEMP_SLOPE * (temp - ph.temp_ref))
         steps = [ph.base_ohm[i] * env / ratios[i] * (1.0 + r.gauss(0.0, ph.noise_sd)) for i in range(N_STEPS)]
         rd = {"t": t, "gas_ohm": round(steps[REFERENCE_STEP], 1),
               "temp_c": round(temp, 2), "rh": round(rh, 2), "sensor_id": self.sensor_id,
-              "location": self.location, "source": "replay", "true_conc": round(self._conc, 4)}
+              "location": self.location, "source": "replay", "true_conc": round(self._conc, 4),
+              "residual_conc": round(sum(concs.values()) - self._conc, 4)}
         if not self.single_channel:          # a legacy board posts only ``gas_ohm``
             rd["gas_ohm_steps"] = [round(x, 1) for x in steps]
         return rd
@@ -242,8 +291,13 @@ def _episode_scenarios(rng: random.Random) -> list[str]:
             rng.choice(["nominal", "door_open", "breath", "door_open", "breath"])]
 
 
+NUISANCE_PREFIXES = ("door_open", "breath", "nominal")
+ANOMALY_PREFIXES = ("spoilage_walkin", "spoilage_protein", "fryer_oil", "burning", "cleaning")
+
+
 def generate_windows(n: int, rng: random.Random, windows_per_episode: int = 3,
-                     single_channel_frac: float = 0.30, warmup_samples: int = 12):
+                     single_channel_frac: float = 0.30, warmup_samples: int = 12,
+                     sequence_frac: float = 0.35):
     """Return ``(X, y)``: ``n`` feature vectors (see ``features.extract``) and class labels.
 
     Each episode: a fresh sensor (``SensorPhysics.sample``), a ``Calibrator`` warmed on clean air,
@@ -253,6 +307,14 @@ def generate_windows(n: int, rng: random.Random, windows_per_episode: int = 3,
     (max |log ratio| > log 1.12); before that it is, truthfully, still nominal. Nuisance scenarios are
     always nominal. A fraction of episodes replicate step 2 to all four steps and set the
     single-channel flag, so the model also learns to fall back on kinetics for legacy boards.
+
+    A further ``sequence_frac`` of episodes mimic someone pressing demo buttons back to back in one
+    room: a *prefix* scenario runs for 8-30 s before the episode's scenario starts, and its gas and
+    temp/RH transient carry over (see ``Simulator``). For an anomaly scenario the prefix is a
+    nuisance (door open, breath, plain clean air), so the model sees a real onset on top of a
+    settling humidity transient. For a nominal-class scenario the prefix may be an anomaly, so the
+    model sees that anomaly's decaying tail; those windows keep the prefix's class while the
+    deviation is above the label threshold (it is still that gas) and are nominal below it.
     """
     import numpy as np
     from .calibration import Calibrator
@@ -280,6 +342,21 @@ def generate_windows(n: int, rng: random.Random, windows_per_episode: int = 3,
                 if ratios is not None:
                     cal.adapt(steps, rd["rh"], nominal=True)
                     hist.append({"t": rd["t"], "ratios": ratios, "temp_c": rd["temp_c"], "rh": rd["rh"]})
+            # optional prefix scenario in the same room (back-to-back button presses)
+            label_cls = s["cls"]
+            if rng.random() < sequence_frac:
+                prefix = rng.choice(NUISANCE_PREFIXES if s["cls"] != "nominal" else ANOMALY_PREFIXES + NUISANCE_PREFIXES)
+                pcls = SCENARIOS[prefix]["cls"]
+                if pcls != "nominal":
+                    label_cls = pcls                  # the tail is still the prefix's gas
+                sim.set_scenario(prefix)
+                sim.location = s["location"]          # same room: no relocation
+                for _ in range(rng.randint(8, 30)):
+                    rd = sim.step()
+                    steps = rd.get("gas_ohm_steps") or [rd["gas_ohm"]] * N_STEPS
+                    ratios = cal.compensate(steps, rd["rh"])
+                    cal.adapt(steps, rd["rh"], nominal=pcls == "nominal" or deviation(ratios) < 0.05)
+                    hist.append({"t": rd["t"], "ratios": ratios, "temp_c": rd["temp_c"], "rh": rd["rh"]})
             sim.set_scenario(scen)
             dur = 100 if s["hold"] is None else int(s["hold"][1] + 3 * (s["decay_tau"][1] if s["decay_tau"] else 0) + 10)
             dur = min(max(dur, 40), 110)
@@ -293,7 +370,7 @@ def generate_windows(n: int, rng: random.Random, windows_per_episode: int = 3,
                 rd = sim.step()
                 steps = rd.get("gas_ohm_steps") or [rd["gas_ohm"]] * N_STEPS
                 ratios = cal.compensate(steps, rd["rh"])
-                truly_nominal = s["cls"] == "nominal" or deviation(ratios) < 0.05
+                truly_nominal = label_cls == "nominal" or deviation(ratios) < 0.05
                 cal.adapt(steps, rd["rh"], nominal=truly_nominal)
                 hist.append({"t": rd["t"], "ratios": ratios, "temp_c": rd["temp_c"], "rh": rd["rh"]})
                 while ci < len(cut_at) and rd["t"] >= cut_at[ci]:
@@ -302,7 +379,7 @@ def generate_windows(n: int, rng: random.Random, windows_per_episode: int = 3,
                     if len(window) < 6:
                         continue
                     dev = deviation(window[-1]["ratios"])
-                    label = s["cls"] if (s["cls"] != "nominal" and dev > label_threshold) else "nominal"
+                    label = label_cls if (label_cls != "nominal" and dev > label_threshold) else "nominal"
                     X.append(extract(window, single_channel=single))
                     y.append(label)
     return np.asarray(X[:n], dtype=float), np.asarray(y[:n], dtype=object)

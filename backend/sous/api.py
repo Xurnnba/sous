@@ -329,8 +329,18 @@ async def ear_protos() -> dict:
 
 @app.delete("/api/ear/prototypes/{label}")
 async def ear_forget(label: str) -> dict:
-    hub.ears.protos.forget(label)
-    return {"ok": True}
+    """Forget one taught label, or everything with label ``_all`` (fresh calibration before a demo)."""
+    if label == "_all":
+        for k in list(hub.ears.protos.protos):
+            hub.ears.protos.forget(k)
+        hub.ears._rooms.clear()
+        hub.ears._save_rooms()
+        for c in hub.ears._cache.values():
+            c._noise_mag = None
+            c._noise_frames.clear()
+    else:
+        hub.ears.protos.forget(label)
+    return {"ok": True, "prototypes": hub.ears.protos.summary()}
 
 
 @app.post("/api/hearing/inject")

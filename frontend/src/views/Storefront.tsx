@@ -66,7 +66,7 @@ function Card({ item, byId, onRestore }: { item: MenuItem; byId: Map<string, Men
         </div>
         {!item.available && (
           <>
-            <div className="absolute top-8 -right-12 rotate-45 bg-zinc-200 text-black text-xs font-black tracking-wide px-14 py-1 shadow">Currently unavailable</div>
+            <div className="absolute top-11 -right-[42px] w-56 text-center rotate-45 bg-zinc-200 text-black text-[10px] uppercase font-black tracking-wider py-1 shadow pointer-events-none">Currently unavailable</div>
             <div className="absolute inset-x-0 bottom-0 p-3 flex justify-end bg-gradient-to-t from-black/70 to-transparent">
               <button
                 className="btn btn-accent text-xs opacity-100 !grayscale-0"
