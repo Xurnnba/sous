@@ -37,6 +37,9 @@ LINES = [
     "Door chime. Nothing ready for pickup yet, let the Dasher know.",
     "Fries up. Match them to the ticket.",
     "Heard a ticket print. Adding it to the board.",
+    "Phone's ringing. Someone grab it.",
+    "Nose is picking up spoiling protein in the walk-in. Someone check the meat before service.",
+    "Lot of noise out there. Everyone okay?",
 ]
 
 CACHE = Path(__file__).resolve().parents[1] / "backend" / "voice_cache"

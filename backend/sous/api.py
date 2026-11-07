@@ -1,27 +1,33 @@
-"""FastAPI app wiring the world, the senses and the brain together. See ../../CONTRACT.md."""
+"""FastAPI app wiring the world, the senses and the agent together. See ../../CONTRACT.md."""
 from __future__ import annotations
 
 import asyncio
 import itertools
 import json
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .agent import llm, tts
 from .agent.brain import Brain
-from .senses.demo_audio import soundtrack_truth, soundtrack_wav
-from .senses.hearing import HearingClassifier
-from .senses.smell import Reading, SmellPipeline, SmellSimulator
+from .agent.items import ItemStore
+from .senses.ear import embedder, sounds
+from .senses.ear.streams import EarManager
+from .senses.nose.physics import Simulator as NoseSimulator
+from .senses.nose.pipeline import NosePipeline
 from .sim.world import World
 
-app = FastAPI(title="Sous", version="0.1")
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+DATA_DIR.mkdir(exist_ok=True)
+
+app = FastAPI(title="Sous", version="0.2")
 
 
 class Hub:
@@ -32,31 +38,30 @@ class Hub:
         self.events: list[dict] = []
         self._eseq = itertools.count(1)
         self.world = World(on_event=self._world_event)
-        self.nose = SmellPipeline(on_event=self._smell_event)
-        self.sim = SmellSimulator(self.nose)
-        self.ears = HearingClassifier(on_event=self._hearing_event)
-        self.brain = Brain(self.world, self.nose, self.ears, emit_action=self._action, speak=self._speak,
-                           emit_event=self._raw_event)
+        self.nose = NosePipeline(on_event=self._smell_event)
+        self.nose_sim = NoseSimulator(self.nose)
+        self.ears = EarManager(DATA_DIR, on_event=self._hearing_event)
+        self.items = ItemStore(DATA_DIR / "items.json", on_change=self._item_change)
+        self.brain = Brain(self.world, self.nose, self.ears, self.items, emit_action=self._action,
+                           speak=self._speak, emit_event=self._raw_event)
+        self.stress = 0.0
         self._loop_task: Optional[asyncio.Task] = None
 
     # ------------------------------------------------------------ fan-out
     def _send_all(self, msg: dict) -> None:
         data = json.dumps(msg)
-        dead = []
         for ws in list(self.clients):
             try:
                 asyncio.ensure_future(ws.send_text(data))
             except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.clients.discard(ws)
+                self.clients.discard(ws)
 
     def _raw_event(self, ev: dict) -> None:
         ev.setdefault("id", f"e{next(self._eseq)}")
         ev.setdefault("t", time.strftime("%Y-%m-%dT%H:%M:%S"))
         ev.setdefault("data", {})
         self.events.insert(0, ev)
-        del self.events[200:]
+        del self.events[300:]
         self._send_all({"type": "event", "event": ev})
 
     def _world_event(self, ev: dict) -> None:
@@ -74,38 +79,58 @@ class Hub:
     def _action(self, a: dict) -> None:
         self._send_all({"type": "action", "action": a})
 
+    def _item_change(self, item: dict, change: str) -> None:
+        self._send_all({"type": "item", "change": change, "item": item})
+
     async def _speak(self, text: str) -> None:
-        self._send_all({"type": "speak", "text": text, "id": f"s{int(time.time()*1000)}"})
+        self._send_all({"type": "speak", "text": text, "id": f"s{int(time.time() * 1000)}"})
 
     # ------------------------------------------------------------ state
+    def _compute_stress(self) -> float:
+        open_tickets = sum(1 for o in self.world.orders if o.status in ("queued", "fire", "cooking"))
+        above_floor, speech = self.ears.stress_inputs()
+        audio = min(1.0, max(0.0, (above_floor - 6) / 24)) * 0.6 + speech * 0.4 if self.ears.active else 0.0
+        load = min(1.0, open_tickets / 12)
+        return round(max(audio, load), 2)
+
     def state(self) -> dict:
         w = self.world.snapshot()
-        hearing = self.ears.snapshot()
-        hearing["recent"] = [e for e in self.events if e["sense"] == "hearing"][:10]
+        ears = self.ears.snapshot()
+        hearing_recent = [e for e in self.events if e["sense"] == "hearing" and e["kind"] not in
+                          ("mic_online", "mic_offline")][:12]
         return {
             "clock": time.strftime("%Y-%m-%dT%H:%M:%S"),
             **w,
-            "senses": {"hearing": hearing, "smell": self.nose.snapshot()},
+            "senses": {
+                "hearing": {"active": ears["active"], "source": "mic" if ears["active"] else "none",
+                            "noise_db": max((m["level_db"] for m in ears["mics"]), default=-60.0),
+                            "stress": self.stress, "recent": hearing_recent},
+                "ears": ears,
+                "smell": self.nose.snapshot(),
+            },
+            "items": self.items.snapshot(),
             "voice": {"last_line": self.brain.last_line, "muted": self.brain.muted},
             "actions": self.brain.actions,
-            "providers": {"llm": llm.PROVIDER, "tts": tts.PROVIDER},
+            "providers": {"llm": llm.PROVIDER, "tts": tts.PROVIDER, "ears": embedder.status(),
+                          "nose": self.nose.snapshot().get("model", {}).get("name", "unknown")},
         }
 
     # ------------------------------------------------------------ main loop
     async def run(self) -> None:
         last = time.monotonic()
-        last_snapshot = 0.0
-        last_sim = 0.0
+        last_snapshot = last_sim = 0.0
         while True:
             await asyncio.sleep(0.1)
             now = time.monotonic()
             dt, last = now - last, now
             self.world.tick(dt)
-            self.ears.set_load(sum(1 for o in self.world.orders if o.status in ("queued", "fire", "cooking")))
             if now - last_sim >= 1.0:
                 last_sim = now
-                self.sim.step()
+                self.nose_sim.step()
                 self.nose.tick()
+                self.ears.tick()
+                self.items.tick()
+                self.stress = self._compute_stress()
             try:
                 await self.brain.tick()
             except Exception as e:  # never let a brain bug stop the sim
@@ -115,15 +140,15 @@ class Hub:
                 last_snapshot = now
                 self._send_all({"type": "snapshot", "state": self.state()})
 
-    def reset(self) -> None:
+    def reset(self, keep_calibration: bool = True) -> None:
         self.world.reset()
         self.nose.reset()
-        self.sim = SmellSimulator(self.nose)
+        self.nose_sim = NoseSimulator(self.nose)
         if os.environ.get("SOUS_NOSE_AUTOSTART", "1") == "1":
-            self.sim.set_scenario("nominal")
-        self.ears.reset()
-        self.brain.__init__(self.world, self.nose, self.ears, emit_action=self._action, speak=self._speak,
-                            emit_event=self._raw_event)
+            self.nose_sim.set_scenario("nominal")
+        self.items.clear()
+        self.brain = Brain(self.world, self.nose, self.ears, self.items, emit_action=self._action,
+                           speak=self._speak, emit_event=self._raw_event)
         self.events.clear()
 
 
@@ -132,14 +157,13 @@ hub = Hub()
 
 @app.on_event("startup")
 async def _start() -> None:
-    # The nose simulator starts in clean-air mode so the sensor is warm and "online" by the time
-    # the demo begins. A real board posting to /api/sensor/reading takes over automatically.
     if os.environ.get("SOUS_NOSE_AUTOSTART", "1") == "1":
-        hub.sim.set_scenario("nominal")
+        hub.nose_sim.set_scenario("nominal")
+    threading.Thread(target=embedder.load, daemon=True).start()   # warm the ear model off the loop
     hub._loop_task = asyncio.create_task(hub.run())
 
 
-# ---------------------------------------------------------------- REST
+# ---------------------------------------------------------------- models
 class Control(BaseModel):
     rush: Optional[bool] = None
     muted: Optional[bool] = None
@@ -153,7 +177,8 @@ class Scenario(BaseModel):
 class SensorReading(BaseModel):
     sensor_id: str = "esp32-01"
     location: str = "walk-in"
-    gas_ohm: float
+    gas_ohm: Optional[float] = None
+    gas_ohm_steps: Optional[list[float]] = None
     temp_c: Optional[float] = None
     rh: Optional[float] = None
     pressure_hpa: Optional[float] = None
@@ -162,16 +187,24 @@ class SensorReading(BaseModel):
 
 class Inject(BaseModel):
     kind: str
+    location: str = "kitchen"
+
+
+class Teach(BaseModel):
+    label: str
+    mic: Optional[str] = None
+    seconds: float = 4.0
 
 
 class Speak(BaseModel):
     text: str
 
 
+# ---------------------------------------------------------------- REST
 @app.get("/api/health")
 async def health() -> dict:
-    return {"ok": True, "providers": {"llm": llm.PROVIDER, "tts": tts.PROVIDER},
-            "smell_device": hub.nose.device}
+    return {"ok": True, "providers": hub.state()["providers"], "smell_device": hub.nose.snapshot().get("device"),
+            "mics": len(hub.ears.mics)}
 
 
 @app.get("/api/state")
@@ -208,45 +241,105 @@ async def restore(mid: str) -> dict:
     return {"ok": True}
 
 
+# ---- items
+@app.get("/api/items")
+async def items() -> dict:
+    return hub.items.snapshot()
+
+
+@app.post("/api/items/{iid}/done")
+async def item_done(iid: str) -> dict:
+    it = hub.items.close(iid, "done")
+    if not it:
+        raise HTTPException(404, "no open item")
+    return it
+
+
+@app.post("/api/items/{iid}/dismiss")
+async def item_dismiss(iid: str) -> dict:
+    it = hub.items.close(iid, "dismissed")
+    if not it:
+        raise HTTPException(404, "no open item")
+    return it
+
+
+# ---- nose
 @app.post("/api/smell/scenario")
 async def scenario(s: Scenario) -> dict:
     try:
-        hub.sim.set_scenario(s.name)
-    except ValueError:
+        hub.nose_sim.set_scenario(s.name)
+    except (ValueError, KeyError):
         raise HTTPException(400, f"unknown scenario {s.name}")
-    return {"scenario": hub.sim.scenario}
+    return {"scenario": getattr(hub.nose_sim, "scenario", s.name)}
 
 
 @app.post("/api/sensor/reading")
 async def sensor_reading(r: SensorReading, request: Request) -> dict:
     """The hardware endpoint. An ESP32 posts here at 1 Hz; so does the serial bridge; so does the simulator
     (in-process, same ``ingest``)."""
-    # a real board posting takes precedence over the simulator
-    if hub.sim.running:
-        hub.sim.set_scenario("stop")
-    source = "serial" if r.sensor_id.startswith("mq") or request.headers.get("x-sous-source") == "serial" else "http"
-    hub.nose.ingest(Reading(t=r.t or time.time(), gas_ohm=r.gas_ohm, temp_c=r.temp_c, rh=r.rh,
-                            sensor_id=r.sensor_id, location=r.location, source=source))
-    return {"ok": True, "status": hub.nose.status, "ratio": hub.nose.ratio}
+    if getattr(hub.nose_sim, "running", False):
+        hub.nose_sim.set_scenario("stop")
+    if r.gas_ohm is None and not r.gas_ohm_steps:
+        raise HTTPException(400, "gas_ohm or gas_ohm_steps required")
+    source = "serial" if request.headers.get("x-sous-source") == "serial" or r.sensor_id.startswith("mq") else "http"
+    reading = {"t": r.t or time.time(), "gas_ohm": r.gas_ohm, "gas_ohm_steps": r.gas_ohm_steps, "temp_c": r.temp_c,
+               "rh": r.rh, "sensor_id": r.sensor_id, "location": r.location, "source": source}
+    hub.nose.ingest(reading)
+    snap = hub.nose.snapshot()
+    return {"ok": True, "status": snap.get("status"), "ratios": snap.get("ratios")}
+
+
+# ---- ears
+@app.post("/api/ear/teach")
+async def ear_teach(t: Teach) -> dict:
+    if not hub.ears.teach(t.mic, t.label, t.seconds):
+        raise HTTPException(400, "no microphone connected or unknown label")
+    return {"ok": True, "label": t.label, "seconds": t.seconds}
+
+
+@app.get("/api/ear/prototypes")
+async def ear_protos() -> dict:
+    return {"prototypes": hub.ears.protos.summary()}
+
+
+@app.delete("/api/ear/prototypes/{label}")
+async def ear_forget(label: str) -> dict:
+    hub.ears.protos.forget(label)
+    return {"ok": True}
 
 
 @app.post("/api/hearing/inject")
 async def inject(i: Inject) -> dict:
-    if i.kind not in ("ticket_burst", "fryer_alarm", "door_chime", "noise_spike"):
+    if i.kind not in ("ticket_burst", "fryer_alarm", "door_chime", "phone_ring", "clatter"):
         raise HTTPException(400, "unknown kind")
     hub._hearing_event({"sense": "hearing", "kind": i.kind, "label": i.kind.replace("_", " ").title() + " (injected)",
-                        "detail": "scripted fallback", "severity": "info", "data": {"injected": True}})
+                        "detail": "scripted fallback", "severity": "info",
+                        "data": {"injected": True, "location": i.location, "mic": "inject", "how": "injected",
+                                 "confidence": 1.0, "top": [["injected", 1.0]], "burst_30s": 1}})
     return {"ok": True}
+
+
+# ---- sounds (sound board + soundtrack)
+@app.get("/api/sounds")
+async def sound_list() -> dict:
+    return {"clips": sounds.available()}
+
+
+@app.get("/api/sounds/{cid}.wav")
+async def sound_file(cid: str) -> Response:
+    if cid not in sounds.BY_ID or not sounds.clip_path(cid).exists():
+        raise HTTPException(404, "no such clip")
+    return FileResponse(str(sounds.clip_path(cid)), media_type="audio/wav")
 
 
 @app.get("/api/demo/soundtrack.wav")
 async def soundtrack() -> Response:
-    return Response(content=soundtrack_wav(), media_type="audio/wav")
+    return Response(content=sounds.soundtrack_wav(), media_type="audio/wav")
 
 
 @app.get("/api/demo/soundtrack.json")
 async def soundtrack_json() -> dict:
-    return soundtrack_truth()
+    return sounds.soundtrack_truth()
 
 
 @app.post("/api/speak")
@@ -265,7 +358,7 @@ async def ws_state(ws: WebSocket) -> None:
     try:
         await ws.send_text(json.dumps({"type": "snapshot", "state": hub.state()}))
         while True:
-            await ws.receive_text()  # we ignore client messages; keeps the socket alive
+            await ws.receive_text()
     except WebSocketDisconnect:
         pass
     finally:
@@ -274,8 +367,13 @@ async def ws_state(ws: WebSocket) -> None:
 
 @app.websocket("/ws/audio")
 async def ws_audio(ws: WebSocket) -> None:
+    """Binary Int16 16 kHz mono frames. Query params or the first text frame set mic id, location, source."""
     await ws.accept()
-    hub.ears.set_source("mic")
+    q = ws.query_params
+    mic_id = q.get("mic") or f"mic-{int(time.time() * 1000) % 100000}"
+    location = q.get("location", "kitchen")
+    source = q.get("source", "mic")
+    hub.ears.open(mic_id, location, source)
     try:
         while True:
             msg = await ws.receive()
@@ -284,15 +382,19 @@ async def ws_audio(ws: WebSocket) -> None:
             if msg.get("text"):
                 try:
                     meta = json.loads(msg["text"])
-                    hub.ears.set_source(meta.get("source", "mic"))
+                    new_loc = meta.get("location", location)
+                    new_src = meta.get("source", source)
+                    if new_loc != location or new_src != source:
+                        location, source = new_loc, new_src
+                        hub.ears.open(mic_id, location, source)
                 except json.JSONDecodeError:
                     pass
             elif msg.get("bytes"):
-                hub.ears.feed_int16(msg["bytes"])
+                hub.ears.feed(mic_id, msg["bytes"])
     except WebSocketDisconnect:
         pass
     finally:
-        hub.ears.set_source("none")
+        hub.ears.close(mic_id)
 
 
 # ---------------------------------------------------------------- static frontend (after `npm run build`)

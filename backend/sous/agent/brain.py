@@ -1,11 +1,12 @@
-"""The agent: fuses orders + ears + nose into actions and one spoken voice.
+"""The agent: turns sense events and order state into prioritised action items, a few automatic
+storefront actions, and one calm voice.
 
-Rules decide *what* to do (deterministic, demo-safe). The LLM decides *how to say it* and,
-for the nose, helps label ambiguous signatures with context. If the LLM is slow or absent,
-the rules text is spoken instead; nothing waits on it.
-
-Speech is rate-limited: fire calls are coalesced so the voice is not a firehose during a rush,
-and alerts always jump the queue.
+Design rules:
+* Every signal becomes at most one item. Repeats update a count instead of adding noise.
+* Rules decide. The LLM (optional) only phrases lines and helps label ambiguous smells.
+* The voice speaks "now" items and the storefront moves; everything else is read, not heard.
+* Items auto-resolve when the world shows they are handled (Dasher left, air cleared, stock back).
+* Nothing here blocks on a network call; LLM use has a hard timeout and a rules fallback.
 """
 from __future__ import annotations
 
@@ -13,36 +14,36 @@ import asyncio
 import itertools
 import os
 import time
-from typing import Awaitable, Callable, Optional
-
 from collections import deque
+from typing import Awaitable, Callable, Optional
 
 from ..sim.menu_data import SUBSTITUTES, pretty
 from ..sim.world import World
-from ..senses.hearing import HearingClassifier
-from ..senses.smell import SmellPipeline
-from . import llm, tts
+from .items import ItemStore
+from . import tts
 
-STOCKOUT_HORIZON_MIN = 18.0     # sim minutes
-MIN_HISTORY_MIN = 4.0           # don't forecast off the first couple of tickets
-FIRE_SPEECH_GAP_S = 8.0
+STOCKOUT_HORIZON_MIN = 18.0
+MIN_HISTORY_MIN = 4.0
 REORDER_SUPPLIER = "Paragon Foods"
-# Fire calls are dynamic text ("Fire D-104, Crispy Fries"), so without a runtime TTS key they'd be the
-# only lines in the browser voice. Default: speak them only when every line can use the same voice.
-SPEAK_FIRE_CALLS = os.environ.get("SOUS_SPEAK_FIRE_CALLS", "auto")
 SUB_DISCOUNT_PCT = 15
 PUSH_DISCOUNT_PCT = 20
+SPEAK_FIRE_CALLS = os.environ.get("SOUS_SPEAK_FIRE_CALLS", "auto")
+FIRE_SPEECH_GAP_S = 8.0
 
 
 def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
 
 
+def spoken_loc(loc: str) -> str:
+    return loc if loc == "walk-in" else loc.replace("-", " ")
+
+
 class Brain:
-    def __init__(self, world: World, nose: SmellPipeline, ears: HearingClassifier,
+    def __init__(self, world: World, nose, ears, items: ItemStore,
                  emit_action: Callable[[dict], None], speak: Callable[[str], Awaitable[None]],
                  emit_event: Callable[[dict], None]):
-        self.world, self.nose, self.ears = world, nose, ears
+        self.world, self.nose, self.ears, self.items = world, nose, ears, items
         self.emit_action, self.speak_cb, self.emit_event = emit_action, speak, emit_event
         self._seq = itertools.count(1)
         self.actions: list[dict] = []
@@ -50,11 +51,11 @@ class Brain:
         self.muted = False
         self._pending_fire: list[str] = []
         self._last_fire_speech = 0.0
-        self._hidden_for: dict[str, set[str]] = {}       # ingredient -> menu ids we hid
-        self._handled_anomaly: Optional[str] = None
+        self._hidden_for: dict[str, set[str]] = {}
         self._tasks: set[asyncio.Task] = set()
-        self._cleaning_ignore_until = 0.0
-        self._hearing_log: deque[dict] = deque(maxlen=12)
+        self._hearing_log: deque[dict] = deque(maxlen=20)
+        self._last_speech: dict[str, float] = {}
+        self._handled_anomaly: Optional[str] = None
 
     # ------------------------------------------------------------------ plumbing
     def _bg(self, coro: Awaitable) -> None:
@@ -70,142 +71,187 @@ class Brain:
         self.emit_action(a)
         return a
 
-    async def say(self, rules_line: str, context: str = "", priority: bool = False) -> None:
-        line, by = await llm.rewrite_line(rules_line, context) if context else (rules_line, "rules")
+    async def say(self, line: str, key: Optional[str] = None, min_gap_s: float = 0.0) -> None:
+        if key and time.monotonic() - self._last_speech.get(key, -1e9) < min_gap_s:
+            return
+        if key:
+            self._last_speech[key] = time.monotonic()
         self.last_line = line
-        self.act("speak", line, by=by, priority=priority)
+        self.act("speak", line)
         if not self.muted:
             await self.speak_cb(line)
 
-    def _ctx(self) -> str:
-        w = self.world
-        low = [f"{i.name} {i.on_hand:.0f}{i.unit} (~{i.minutes_to_stockout():.0f} min left)"
-               for i in w.inventory.values() if i.minutes_to_stockout() and i.minutes_to_stockout() < 40]
-        return (f"Sim time {w.sim_minutes:.0f} min after open, rush={'on' if w.rush else 'off'}, "
-                f"{w.load} orders cooking, {len([o for o in w.orders if o.status in ('queued','fire')])} waiting. "
-                f"Low stock: {', '.join(low) or 'none'}. Kitchen noise {self.ears.noise_db:.0f} dBFS, "
-                f"stress {self.ears.stress:.1f}. Nose: {self.nose.status} at {self.nose.location}.")
+    def _item(self, **kw) -> dict:
+        """Add an item; speak its line if it has one (new items always, repeats only after speak_gap)."""
+        speak = kw.pop("speak", None)
+        speak_key = kw.pop("speak_key", None)
+        speak_gap = kw.pop("speak_gap", 0.0)
+        it, is_new = self.items.add(**kw)
+        if speak and (is_new or speak_key):
+            self._bg(self.say(speak, key=speak_key or it["id"], min_gap_s=speak_gap))
+        return it
 
-    # ------------------------------------------------------------------ event hooks
+    # ------------------------------------------------------------------ orders
     def on_world_event(self, ev: dict) -> None:
         if ev["kind"] == "fire":
             self._pending_fire.append(ev["data"]["order_id"])
+        elif ev["kind"] == "picked_up":
+            oid = ev["data"]["order_id"]
+            self.items.resolve(lambda i: i["sense"] == "hearing" and i["evidence"].get("order_id") == oid)
 
+    # ------------------------------------------------------------------ hearing
     def on_hearing_event(self, ev: dict) -> None:
         w = self.world
-        kind = ev["kind"]
+        kind, d = ev["kind"], ev.get("data", {})
+        loc = d.get("location", "kitchen")
+        if kind in ("mic_online", "mic_offline", "taught"):
+            return
         self._hearing_log.append(ev)
+        evidence = {"mic": d.get("mic"), "location": loc, "how": d.get("how"), "confidence": d.get("confidence"),
+                    "heard_as": (d.get("top") or [[None]])[0][0], "db": d.get("db")}
+
         if kind == "ticket_burst":
             o = w.spawn_heard_order()
             if o:
-                items = ", ".join(f"{i['qty']}x {i['name']}" for i in o.items)
-                self.act("fire_now" if o.fire_at <= w.sim_minutes + 0.5 else "speak",
-                         f"Heard a ticket print: {o.id} ({o.channel}) added to the board", order_id=o.id)
-                self._bg(self.say("Heard a ticket print. Adding it to the board."))
+                burst = d.get("burst_30s", 1)
+                self._item(title=f"{burst} ticket{'s' if burst > 1 else ''} printed off the tablet",
+                           detail=f"Heard the POS printer at the {loc}; {o.id} added to the board so it is fired on time.",
+                           urgency="next", sense="hearing", kind=kind, key="tickets_offtablet", location=loc,
+                           auto={"type": "board", "summary": f"{o.id} added to the board"},
+                           evidence=dict(evidence, order_id=o.id),
+                           speak="Heard a ticket print. Adding it to the board.", speak_key="ticket", speak_gap=45.0,
+                           expires_s=90.0)
         elif kind == "fryer_alarm":
             fry = [o for o in w.orders if o.status == "cooking" and any("fryer" in w.menu[i["id"]].tags for i in o.items)]
             if fry:
-                ids = ", ".join(o.id for o in fry[:2])
-                self.act("speak", f"Fryer alarm matched to {ids}", order_ids=[o.id for o in fry])
-                self._bg(self.say("Fries up. Match them to the ticket.", priority=True))
+                o = fry[0]
+                self._item(title=f"Fries up: plate them for {o.id}",
+                           detail=f"Fryer alarm at the {loc} matches {o.id}, which is cooking fries.",
+                           urgency="now", sense="hearing", kind=kind, key=f"fries_{o.id}", location=loc,
+                           evidence=dict(evidence, order_id=o.id), speak="Fries up. Match them to the ticket.",
+                           expires_s=90.0)
             else:
-                # sad path: an alarm nobody is waiting for
-                self.act("ask_human", "Fryer alarm with nothing on the fryer ticket", station="fry-station")
-                self._bg(self.say("Fryer alarm and nothing's on the fryer ticket. Someone check station 2.",
-                                  priority=True))
+                self._item(title="Check station 2: fryer alarm with no fryer ticket",
+                           detail="An alarm is going off and nothing on the board is cooking fries. Someone left a basket in.",
+                           urgency="now", sense="hearing", kind=kind, key="fryer_orphan", location=loc,
+                           evidence=evidence, speak="Fryer alarm and nothing's on the fryer ticket. Someone check station 2.",
+                           speak_key="fryer_orphan", speak_gap=20.0, expires_s=120.0)
         elif kind == "door_chime":
             ready = [o for o in w.orders if o.status == "ready" and o.channel in ("doordash", "ubereats")]
             soon = [o for o in w.orders if o.status in ("cooking", "fire") and o.channel in ("doordash", "ubereats")]
             if ready:
                 o = ready[0]
-                w.pick_up(o)
-                self.act("speak", f"Dasher at the door matched to {o.id}", order_id=o.id)
-                self._bg(self.say("Dasher at the door. Bag's on the shelf, check the name.", priority=True))
+                self._item(title=f"Hand {o.id} to the Dasher at the door",
+                           detail="Door chime while a delivery order is on the shelf. Check the name on the bag.",
+                           urgency="now", sense="hearing", kind=kind, key=f"handoff_{o.id}", location=loc,
+                           evidence=dict(evidence, order_id=o.id),
+                           speak="Dasher at the door. Bag's on the shelf, check the name.", expires_s=90.0)
+                asyncio.get_event_loop().call_later(6.0, lambda: w.pick_up(o))
             elif soon:
                 o = min(soon, key=lambda x: x.fire_at + x.prep_minutes)
                 mins = max(0.5, o.fire_at + o.prep_minutes + 0.5 - w.sim_minutes)
-                self.act("speak", f"Dasher early for {o.id}", order_id=o.id, minutes=round(mins, 1))
-                self._bg(self.say("Door chime. Nothing ready for pickup yet, let the Dasher know.", priority=True))
+                self._item(title=f"Dasher waiting: tell them {o.id} is ~{mins:.0f} min out",
+                           detail="Door chime before the order is ready. A quick word keeps the Dasher from leaving.",
+                           urgency="now", sense="hearing", kind=kind, key=f"wait_{o.id}", location=loc,
+                           evidence=dict(evidence, order_id=o.id, minutes=round(mins, 1)),
+                           speak="Door chime. Nothing ready for pickup yet, let the Dasher know.", expires_s=120.0)
             else:
-                self._bg(self.say("Door chime. Nothing on the pickup shelf."))
-        elif kind == "noise_spike":
-            if self.ears.stress > 0.7:
-                self._bg(self.say("It's loud. Call your orders back so nothing gets missed."))
+                self._item(title="Someone at the front door",
+                           detail="Door chime; no delivery order is due. Probably a walk-in.",
+                           urgency="next", sense="hearing", kind=kind, key="door", location=loc, evidence=evidence,
+                           speak="Door chime. Nothing on the pickup shelf.", speak_key="door_plain", speak_gap=30.0,
+                           expires_s=60.0)
+        elif kind == "phone_ring":
+            self._item(title="Phone ringing: pick up, likely a phone order",
+                       detail=f"Heard the landline at the {loc}.", urgency="now", sense="hearing", kind=kind,
+                       key="phone", location=loc, evidence=evidence, speak="Phone's ringing. Someone grab it.",
+                       speak_key="phone", speak_gap=20.0, expires_s=60.0)
+        elif kind == "clatter":
+            burst = d.get("burst_30s", 1)
+            self._item(title=f"Something dropped at the {loc}: check for breakage",
+                       detail="Loud clatter picked up by the mic." + (" Twice in 30 seconds." if burst > 1 else ""),
+                       urgency="next", sense="hearing", kind=kind, key=f"clatter_{loc}", location=loc,
+                       evidence=evidence, speak=("Lot of noise out there. Everyone okay?" if burst > 1 else None),
+                       speak_key="clatter", speak_gap=60.0, expires_s=120.0)
 
+    # ------------------------------------------------------------------ smell
     def on_smell_event(self, ev: dict) -> None:
-        kind = ev["kind"]
+        kind, d = ev["kind"], ev.get("data", {})
+        loc = d.get("location") or getattr(self.nose, "location", "walk-in")
         if kind in ("device_connected", "device_offline", "relocated"):
             return
         if kind == "voc_clear":
-            self._handled_anomaly = None
-            self._bg(self.say(f"Air's clear at the {self.nose.location.replace('-', ' ') if self.nose.location != 'walk-in' else 'walk-in'}."))
+            closed = self.items.resolve(lambda i: i["sense"] == "smell" and i.get("location") == loc)
+            if closed:
+                self._bg(self.say(f"Air's clear at the {spoken_loc(loc)}."))
             return
-        if self._handled_anomaly == ev["id"]:
+        if self._handled_anomaly == ev.get("id"):
             return
-        self._handled_anomaly = ev["id"]
-        self._bg(self._handle_anomaly(kind, ev))
+        self._handled_anomaly = ev.get("id")
+        self._bg(self._handle_anomaly(kind, d, loc))
 
-    async def _handle_anomaly(self, kind: str, ev: dict) -> None:
-        w, n = self.world, self.nose
-        d = ev.get("data", {})
+    async def _handle_anomaly(self, kind: str, d: dict, loc: str) -> None:
+        w = self.world
+        evidence = {"location": loc, "confidence": d.get("confidence"), "probs": d.get("probs"),
+                    "fingerprint": d.get("fingerprint"), "single_channel": d.get("single_channel")}
         perishable = w.most_perishable_in("walk-in")
-        context = (
-            f"VOC sensor at the {n.location}. Ratio {d.get('ratio')}x clean-air baseline, rising "
-            f"{d.get('rate_per_s')}/s, temperature change {d.get('temp_delta_c')} C, humidity {n.rh}%. "
-            f"Heuristic label: {kind} (confidence {d.get('confidence')}). Time: {w.sim_minutes:.0f} min after "
-            f"open. In the walk-in the most perishable stock is {perishable.name if perishable else 'nothing'} "
-            f"({perishable.days_in_stock if perishable else 0} days in). Recent kitchen sounds: "
-            f"{', '.join(e['kind'] for e in list(self._recent_hearing())[-4:]) or 'none'}. {self._ctx()}")
-
-        defaults = {
-            "spoilage": {"kind": "spoilage", "action": "promote", "confidence": 0.7,
-                         "line": (f"Nose says the {pretty(perishable.name) if perishable else 'produce'} in the walk-in is "
-                                  f"turning. Pushing it today at {PUSH_DISCOUNT_PCT} percent off and skipping tomorrow's order.")},
-            "burning": {"kind": "burning", "action": "alert", "confidence": 0.8,
-                        "line": "Something's burning on the line. Check station 2 now."},
-            "oil_degraded": {"kind": "oil_degraded", "action": "change_oil", "confidence": 0.65,
-                             "line": "Fryer oil's past its life. Change it before the dinner rush. Oil's cheaper than a bad review."},
-            "cleaning": {"kind": "cleaning", "action": "ignore", "confidence": 0.55,
-                         "line": "Nose spiked in the walk-in, looks like cleaner. Ignoring it for two minutes."},
-            "unknown": {"kind": "unknown", "action": "ask_human", "confidence": 0.3,
-                        "line": f"Nose picked up something in the {n.location} I can't place. Can someone take a look?"},
-        }[kind]
-        decision, by = await llm.fuse_smell(context, defaults)
-        action = decision.get("action", "ask_human")
-        line = decision.get("line", defaults["line"])
-
-        if action == "promote" and perishable:
+        if kind == "spoilage_produce" and perishable:
             w.mark_turning(perishable.name)
             for m in w.items_using(perishable.name):
                 if m.available:
                     w.set_discount(m.id, PUSH_DISCOUNT_PCT, f"{pretty(perishable.name)} is turning, moving it today")
-            saved = perishable.on_hand * 1.9  # rough $/unit of produce that would otherwise be waste
-            w.metrics["est_waste_saved_usd"] += saved
-            self.act("menu_discount", f"Promoting {pretty(perishable.name)} dishes at {PUSH_DISCOUNT_PCT}% to move "
-                     f"stock before it spoils", by=by, ingredient=perishable.name, pct=PUSH_DISCOUNT_PCT,
-                     confidence=decision.get("confidence"))
-            self.act("reorder_draft", f"Skip tomorrow's {pretty(perishable.name)} order, re-check freshness at close", by=by,
-                     supplier=REORDER_SUPPLIER, ingredient=perishable.name, qty=0, unit=perishable.unit,
-                     note="nose flagged spoilage")
-        elif action == "alert":
-            self.act("ask_human", "Burning detected on the line", by=by, station="line", severity="alert")
-        elif action == "change_oil":
+            w.metrics["est_waste_saved_usd"] += perishable.on_hand * 1.9
+            self.act("menu_discount", f"Promoting {pretty(perishable.name)} dishes at {PUSH_DISCOUNT_PCT}% to move stock",
+                     ingredient=perishable.name, pct=PUSH_DISCOUNT_PCT)
+            self.act("reorder_draft", f"Skip tomorrow's {pretty(perishable.name)} order", supplier=REORDER_SUPPLIER,
+                     ingredient=perishable.name, qty=0, unit=perishable.unit, note="nose: produce turning")
+            self._item(title=f"{pretty(perishable.name).capitalize()} is turning: use it today",
+                       detail=f"Fermentation signature in the walk-in. Sous discounted every {pretty(perishable.name)} dish "
+                              f"{PUSH_DISCOUNT_PCT}% and drafted a zero reorder for tomorrow. Check the tray at close.",
+                       urgency="today", sense="smell", kind=kind, key="spoilage_produce", location=loc,
+                       auto={"type": "menu_discount",
+                             "summary": f"{PUSH_DISCOUNT_PCT}% off {pretty(perishable.name)} dishes, reorder skipped"},
+                       evidence=evidence,
+                       speak=f"Nose says the {pretty(perishable.name)} in the walk-in is turning. Pushing it today at "
+                             f"{PUSH_DISCOUNT_PCT} percent off and skipping tomorrow's order.")
+        elif kind == "spoilage_protein":
+            protein = next((i for i in w.inventory.values() if i.name in ("carnitas", "chicken")), None)
+            if protein:
+                w.mark_turning(protein.name, "watch")
+            self._item(title=f"Protein in the walk-in smells off: check the {pretty(protein.name) if protein else 'meat'} before service",
+                       detail="Amine signature (spoiling protein). Sous does not auto-act on food safety; a person decides.",
+                       urgency="today", sense="smell", kind=kind, key="spoilage_protein", location=loc, evidence=evidence,
+                       speak="Nose is picking up spoiling protein in the walk-in. Someone check the meat before service.")
+        elif kind == "burning":
+            self._item(title="Something is burning on the line: check station 2 now",
+                       detail="Fast, large VOC rise with a temperature jump. Not a cleaning product.",
+                       urgency="now", sense="smell", kind=kind, key="burning", location=loc, evidence=evidence,
+                       speak="Something's burning on the line. Check station 2 now.", expires_s=240.0)
+        elif kind == "oil_degraded":
             w.mark_turning("fry_oil", "spoiled")
-            self.act("ask_human", "Change fryer oil before service", by=by, station="fry-station")
-            self.act("reorder_draft", "Fry oil: 1 x 20 L jug", by=by, supplier=REORDER_SUPPLIER,
-                     ingredient="fry_oil", qty=20, unit="L", note="nose: oil degraded")
-        elif action == "ignore":
-            self._cleaning_ignore_until = time.monotonic() + 120
-            self.act("speak", "Ignoring cleaning-product spike", by=by)
+            self.act("reorder_draft", "Fry oil: 1 x 20 L jug", supplier=REORDER_SUPPLIER, ingredient="fry_oil", qty=20,
+                     unit="L", note="nose: oil degraded")
+            self._item(title="Change the fryer oil before the dinner rush",
+                       detail="Slow aldehyde creep at the fry station: the oil is past its life. Reorder drafted.",
+                       urgency="next", sense="smell", kind=kind, key="oil", location=loc,
+                       auto={"type": "reorder_draft", "summary": "20 L fry oil drafted"}, evidence=evidence,
+                       speak="Fryer oil's past its life. Change it before the dinner rush. Oil's cheaper than a bad review.")
+        elif kind in ("cleaning", "door_open"):
+            self._item(title=("Cleaning-product spike in the walk-in, ignoring" if kind == "cleaning"
+                              else "Walk-in door left open a while"),
+                       detail=("Oxidising signature with a humidity jump; not food. No action." if kind == "cleaning"
+                               else "Humidity and temperature transient; nothing to act on unless it keeps happening."),
+                       urgency="later", sense="smell", kind=kind, key=kind, location=loc, evidence=evidence,
+                       speak=("Nose spiked in the walk-in, looks like cleaner. Ignoring it for two minutes."
+                              if kind == "cleaning" else None), expires_s=120.0)
         else:
-            self.act("ask_human", f"Unclassified VOC rise at the {n.location}, asking staff to check", by=by,
-                     confidence=decision.get("confidence"))
-        await self.say(line, priority=True)
+            self._item(title=f"Unidentified smell at the {loc}: take a look",
+                       detail="The nose sees a rise it cannot label with confidence, so it asks instead of acting.",
+                       urgency="next", sense="smell", kind="unknown", key=f"unknown_{loc}", location=loc,
+                       evidence=evidence,
+                       speak=f"Nose picked up something in the {spoken_loc(loc)} I can't place. Can someone take a look?")
 
-    def _recent_hearing(self) -> list[dict]:
-        return list(self._hearing_log)
-
-    # ------------------------------------------------------------------ periodic decisions
+    # ------------------------------------------------------------------ periodic
     async def tick(self) -> None:
         await self._stockout_watch()
         await self._fire_calls()
@@ -217,7 +263,7 @@ class Brain:
                 continue
             mts = ing.minutes_to_stockout()
             max_need = max((m.ingredients[ing.name] for m in w.items_using(ing.name)), default=0)
-            forecast_low = (mts is not None and mts < STOCKOUT_HORIZON_MIN and w.sim_minutes >= MIN_HISTORY_MIN)
+            forecast_low = mts is not None and mts < STOCKOUT_HORIZON_MIN and w.sim_minutes >= MIN_HISTORY_MIN
             low = forecast_low or ing.on_hand < max_need
             name = pretty(ing.name)
             hidden = self._hidden_for.get(ing.name, set())
@@ -225,8 +271,7 @@ class Brain:
                 to_hide = [m for m in w.items_using(ing.name) if m.available]
                 if not to_hide:
                     continue
-                names = []
-                subs = []
+                names, subs = [], []
                 for m in to_hide:
                     w.hide_item(m.id, f"{name} runs out in ~{mts:.0f} min" if forecast_low else f"out of {name}")
                     hidden.add(m.id)
@@ -244,29 +289,35 @@ class Brain:
                     self.act("substitute", f"Promoting {', '.join(dict.fromkeys(subs))} at {SUB_DISCOUNT_PCT}% off",
                              items=subs, pct=SUB_DISCOUNT_PCT)
                 self.act("reorder_draft", f"{name}: {qty:.0f} {ing.unit} from {REORDER_SUPPLIER}",
-                         supplier=REORDER_SUPPLIER, ingredient=ing.name, qty=round(qty), unit=ing.unit,
-                         note="auto-drafted on predicted stockout; owner approves")
+                         supplier=REORDER_SUPPLIER, ingredient=ing.name, qty=round(qty), unit=ing.unit)
                 spoken = [n.replace("&", "and").replace(" (3)", "") for n in names]
                 pulled = spoken[0] if len(spoken) == 1 else ", ".join(spoken[:-1]) + " and " + spoken[-1]
                 verb = "is about to run out" if forecast_low else "is out"
                 line = (f"{name.capitalize()} {verb}. Pulling {pulled} from DoorDash and Uber Eats now"
                         + (f", promoting {subs[0].replace('&', 'and')} at {SUB_DISCOUNT_PCT} percent off" if subs else "")
                         + ". Reorder draft is ready.")
-                await self.say(line, priority=True)
+                self._item(title=f"{name.capitalize()} {'runs out in ~%d min' % mts if forecast_low else 'is out'}: "
+                                 f"approve the reorder ({qty:.0f} {ing.unit})",
+                           detail=f"Sous already pulled {', '.join(names)} from the delivery apps"
+                                  + (f" and is promoting {subs[0]} at {SUB_DISCOUNT_PCT}% off" if subs else "")
+                                  + f". Reorder from {REORDER_SUPPLIER} is drafted; press 'We got more' when it lands.",
+                           urgency="next" if forecast_low else "now", sense="orders", kind="stockout",
+                           key=f"stockout_{ing.name}",
+                           auto={"type": "menu_hide",
+                                 "summary": f"{len(names)} dishes pulled, substitute promoted, reorder drafted"},
+                           evidence={"ingredient": ing.name, "minutes_to_stockout": mts, "on_hand": ing.on_hand,
+                                     "burn_rate_per_min": ing.burn_rate_per_min}, speak=line, expires_s=3600.0)
             elif hidden and not low and ing.on_hand >= ing.par * 0.5:
-                # restocked (human pressed "we got more"): restore
                 for mid in list(hidden):
                     w.restore_item(mid)
                 self._hidden_for[ing.name] = set()
                 self.act("menu_restore", f"{name} restocked, restored {', '.join(w.menu[m].name for m in hidden)}",
                          ingredient=ing.name, items=list(hidden))
-                await self.say(f"{name.capitalize()} is back. Restoring the menu.", priority=True)
+                self.items.resolve(lambda i: i.get("key") == f"stockout_{ing.name}")
+                await self.say(f"{name.capitalize()} is back. Restoring the menu.")
 
     async def _fire_calls(self) -> None:
-        if not self._pending_fire:
-            return
-        # never more than one fire call per FIRE_SPEECH_GAP_S; whatever queued up gets one combined call
-        if time.monotonic() - self._last_fire_speech < FIRE_SPEECH_GAP_S:
+        if not self._pending_fire or time.monotonic() - self._last_fire_speech < FIRE_SPEECH_GAP_S:
             return
         ids, self._pending_fire = self._pending_fire[:], []
         self._last_fire_speech = time.monotonic()
@@ -277,9 +328,8 @@ class Brain:
         if len(orders) == 1:
             o = orders[0]
             items = ", ".join(f"{i['qty']}x {i['name']}" if i['qty'] > 1 else i['name'] for i in o.items)
-            eta = ""
-            if o.dasher_eta_min is not None:
-                eta = f", Dasher {max(0, o.placed_at + o.dasher_eta_min - w.sim_minutes):.0f} minutes out"
+            eta = (f", Dasher {max(0, o.placed_at + o.dasher_eta_min - w.sim_minutes):.0f} minutes out"
+                   if o.dasher_eta_min is not None else "")
             line = f"Fire {o.id}, {items}{eta}."
         elif len(orders) <= 3:
             line = "Fire " + ", ".join(o.id for o in orders[:-1]) + f" and {orders[-1].id}."
@@ -290,10 +340,9 @@ class Brain:
         if speak:
             await self.say(line)
         else:
-            self.last_line = line  # shown on the voice bar, not spoken
+            self.last_line = line
 
     def human_restore(self, mid: str) -> None:
-        """Staff pressed 'We got more' on an item: treat it as a delivery of every scarce ingredient in it."""
         w = self.world
         for ing in w.menu[mid].ingredients:
             if mid in self._hidden_for.get(ing, set()) or w.inventory[ing].on_hand < w.inventory[ing].par * 0.3:

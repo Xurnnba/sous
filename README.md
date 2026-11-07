@@ -57,49 +57,51 @@ and so on) ship pre-rendered with ElevenLabs in `backend/voice_cache/`, so they 
 or without a key. Only the dynamic fire calls ("Fire D-104, Crispy Fries") fall back to the browser
 voice when no key is set. `tools/render_voice_cache.py` re-renders the fixed lines if you change them.
 
-## The 3-minute demo
+## The demo (unscripted, verifiable)
 
-Open the **Live** tab on the projector; keep **Storefront** on a second screen or phone. The
-**Run demo** button in the top bar plays the whole sequence below on its own (rush, soundtrack,
-tab switches, nose scenarios) over about 2.5 minutes, so you can narrate instead of clicking.
+Open the **Board** on the projector. Hand a judge your phone open at `/#/sounds`. Nothing below is
+pre-recorded or pre-ordered; the judge picks.
 
-1. **Sad path first (30 s).** Say: "Friday, 7 pm, every restaurant in Pittsburgh. Someone orders
-   guacamole. The avocados ran out ten minutes ago. Nobody updated the app. The customer waits,
-   the order gets cancelled, the restaurant eats the refund." Click **Rush**.
-2. **The ears (45 s).** Click **Play soundtrack**. The ticket printer bursts turn into walk-in
-   orders on the board that no tablet knew about. The fryer alarm fires with nothing on the fryer
-   ticket and Sous asks someone to check station 2. The door chime arrives before the Dasher's
-   order is ready and Sous tells the line to let the Dasher know. Point at the Senses tab's
-   truth-vs-detected timeline if asked.
-3. **The storefront moment (30 s).** Within about half a minute of rush the voice says
-   "Avocado runs out in about 9 minutes. Pulling Avocado Toast and Guacamole from DoorDash and
-   Uber Eats now, promoting Tomato Toast at 15 percent off. Reorder draft for 22 is ready."
-   Switch to **Storefront**: the items are greyed out with the reason, the substitute has a promo
-   badge. "Refunds avoided" starts counting the customers who tried to order them.
-4. **The nose (45 s).** On **Senses**, click **Spoilage in walk-in**. Watch the ratio climb on the
-   Back Office chart; after a few seconds Sous says the avocado is turning, discounts every avocado
-   dish to move it today, and drafts "skip tomorrow's order". Then click **Burning at station**:
-   the signature escalates and the voice alerts immediately. Click **Cleaning cycle**: a sharp spike
-   that it correctly ignores. Say out loud: "No board today, so this trace is synthetic, replayed
-   through the same endpoint the ESP32 posts to. The firmware is in the repo."
-5. **Human in the loop (15 s).** On Storefront press **We got more** under Avocado Toast. Stock
-   resets, the menu restores, the voice confirms. The agent acts, but a human can always override.
+1. **Ears, zero-shot.** The laptop mic is listening (Listen is on, location "kitchen"). The judge taps
+   any sound on the phone from across the room. Within a second the Ears event stream shows what the
+   model heard (`zero-shot · 0.9 · Alarm`), the Board grows an item with an urgency, and the voice
+   speaks only if it is a *now* item. Tap the same sound again: one item, count ×2, no second line.
+2. **Ears, calibrated in four seconds.** On the Ears page press **Teach → Ticket printer**, have the
+   judge play the printer clip during the countdown. "Learned 14 examples." Play it again: the event
+   now says `taught · 0.93`. Forget it; it goes back to zero-shot. This is the whole calibration
+   story and it happens in front of them.
+3. **Nose.** On the Nose page the fingerprint bars sit at 1.0 and the calibration card says ready.
+   The judge picks any scenario. Spoilage (produce) ramps three of four bars, the probability bar for
+   produce climbs past the threshold, a *today* item appears with the auto-action (discount + skip
+   reorder) and the storefront changes. Burning spikes all four bars with a temperature jump → *now*.
+   Cleaning pushes one bar *below* 1.0 (oxidising gas) → an informational item that expires on its own.
+   Say out loud: no board today, this is replayed sensor physics through the hardware endpoint, the
+   classifier is real and `tests/eval_nose.py` prints its confusion matrix.
+4. **Agent.** Turn on Rush. Within about a minute: "Avocado is about to run out", three dishes pulled
+   from the Storefront, a *next* item asking the owner to approve the drafted reorder. Press **We got
+   more** on the Storefront; the item closes itself.
+5. **Trust.** Every item shows its evidence. Every event says how it was decided. Dismiss anything.
 
-If the room is loud and the mic path misbehaves, the **inject** buttons on Senses trigger each
-hearing event directly. The soundtrack path does not depend on the room at all.
+Fallbacks if the room is hostile: a second phone as a "front" mic placed near the speaker; the
+inject buttons on the Ears page; the soundtrack button, which streams the same clips straight into
+the classifier with a truth-vs-detected timeline.
 
 ## Repository map
 
 ```
 backend/sous/sim/        menu, recipes, order stream, inventory, storefront state
-backend/sous/senses/     hearing.py (DSP classifier), smell.py (nose pipeline + simulator), demo_audio.py
-backend/sous/agent/      brain.py (decisions + voice), llm.py (provider shim), tts.py
+backend/sous/senses/ear/ embedder.py (YAMNet), classifier.py (AGC, gate, zero/few-shot, merge), streams.py (multi-mic), sounds.py
+backend/sous/senses/nose/ physics.py (sensor model + simulator), calibration.py, features.py, model.py (GBDT), pipeline.py
+backend/sous/agent/      items.py (action-item store), brain.py (signals → items + storefront actions + voice), llm.py, tts.py
 backend/sous/api.py      FastAPI + websockets, serves frontend/dist
-frontend/                Vite + React + Tailwind dashboard (Kitchen, Storefront, Back Office, Senses)
+frontend/                Vite + React + Tailwind (Board, Ears, Nose, Kitchen, Storefront, Sounds)
 firmware/                ESP32+BME688 and Arduino+MQ-135 sketches, BOM
 tools/serial_bridge.py   forward a serial-connected sensor to the backend
-docs/ENOSE.md            e-nose design, physics, pipeline, limitations, validation plan
-docs/JUDGES.md           what is real, simulated and mocked
+docs/ARCHITECTURE.md     how the pieces fit
+docs/EARS.md             ear design and measured recall / false positives
+docs/ENOSE.md            e-nose design, physics, fingerprint classifier, limitations, validation plan
+docs/JUDGES.md           what is real, simulated and mocked, and how to check each live
+backend/tests/           eval_ear.py, sweep_ear.py, eval_nose.py (reproducible numbers)
 CONTRACT.md              backend/frontend message contract
 ```
 

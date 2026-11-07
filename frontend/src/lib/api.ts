@@ -1,37 +1,37 @@
-import type { ControlBody, HearingInjectKind, SmellScenario, State } from "../types";
+import type { ControlBody, HearingInjectKind, Items, SensorReadingBody, SmellScenario, SoundClip, State } from "../types";
 
 // Thin REST client for every endpoint in CONTRACT.md. Each helper is replaceable in
 // mock mode (see mock/mockBackend.ts), so the UI never has to know which mode it is in.
 export type SousApi = {
-  health: () => Promise<{ ok: boolean; providers: State["providers"]; smell_device: string }>;
+  health: () => Promise<{ ok: boolean; providers: Partial<State["providers"]>; smell_device: string; mics?: unknown }>;
   getState: () => Promise<State>;
   control: (body: ControlBody) => Promise<void>;
   reset: () => Promise<void>;
   restoreMenuItem: (id: string) => Promise<void>;
+  getItems: () => Promise<Items>;
+  itemDone: (id: string) => Promise<void>;
+  itemDismiss: (id: string) => Promise<void>;
   smellScenario: (name: SmellScenario) => Promise<void>;
-  sensorReading: (body: {
-    sensor_id: string;
-    location: string;
-    gas_ohm: number;
-    temp_c: number;
-    rh: number;
-    pressure_hpa?: number;
-    t?: number;
-  }) => Promise<void>;
-  hearingInject: (kind: HearingInjectKind) => Promise<void>;
+  sensorReading: (body: SensorReadingBody) => Promise<void>;
+  earTeach: (body: { label: string; mic?: string; seconds?: number }) => Promise<void>;
+  earPrototypes: () => Promise<{ prototypes: State["senses"]["ears"]["prototypes"] }>;
+  earForget: (label: string) => Promise<void>;
+  hearingInject: (kind: HearingInjectKind, location?: string) => Promise<void>;
+  sounds: () => Promise<{ clips: SoundClip[] }>;
   /** Returns an MP3 blob when the server has a TTS provider; null on 204 (use speechSynthesis). */
   speak: (text: string) => Promise<Blob | null>;
 };
 
-async function postJson(path: string, body?: unknown): Promise<Response> {
+async function request(method: string, path: string, body?: unknown): Promise<Response> {
   const res = await fetch(path, {
-    method: "POST",
+    method,
     headers: body === undefined ? {} : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+  if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}`);
   return res;
 }
+const postJson = (path: string, body?: unknown) => request("POST", path, body);
 
 export const httpApi: SousApi = {
   health: () => fetch("/api/health").then((r) => r.json()),
@@ -39,9 +39,16 @@ export const httpApi: SousApi = {
   control: (body) => postJson("/api/control", body).then(() => undefined),
   reset: () => postJson("/api/reset").then(() => undefined),
   restoreMenuItem: (id) => postJson(`/api/menu/${encodeURIComponent(id)}/restore`).then(() => undefined),
+  getItems: () => fetch("/api/items").then((r) => r.json()),
+  itemDone: (id) => postJson(`/api/items/${encodeURIComponent(id)}/done`).then(() => undefined),
+  itemDismiss: (id) => postJson(`/api/items/${encodeURIComponent(id)}/dismiss`).then(() => undefined),
   smellScenario: (name) => postJson("/api/smell/scenario", { name }).then(() => undefined),
   sensorReading: (body) => postJson("/api/sensor/reading", body).then(() => undefined),
-  hearingInject: (kind) => postJson("/api/hearing/inject", { kind }).then(() => undefined),
+  earTeach: (body) => postJson("/api/ear/teach", { seconds: 4, ...body }).then(() => undefined),
+  earPrototypes: () => fetch("/api/ear/prototypes").then((r) => r.json()),
+  earForget: (label) => request("DELETE", `/api/ear/prototypes/${encodeURIComponent(label)}`).then(() => undefined),
+  hearingInject: (kind, location) => postJson("/api/hearing/inject", location ? { kind, location } : { kind }).then(() => undefined),
+  sounds: () => fetch("/api/sounds").then((r) => (r.ok ? r.json() : { clips: [] })),
   speak: async (text) => {
     const res = await postJson("/api/speak", { text });
     if (res.status === 204) return null;
