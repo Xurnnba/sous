@@ -198,7 +198,7 @@ export type Items = {
 
 export type Providers = {
   llm: "anthropic" | "nova" | "rules";
-  tts: "elevenlabs" | "cache" | "browser" | (string & {});
+  tts: "elevenlabs" | "cache" | "none" | (string & {});
   ears: "ready" | "loading" | "unavailable" | "unloaded";
   nose: string;
 };

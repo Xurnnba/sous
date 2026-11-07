@@ -211,7 +211,7 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
       items: { open: [], recent_closed: [], counts: { now: 0, next: 0, today: 0, later: 0 }, total_created: 0 },
       voice: { last_line: "", muted: false },
       actions: [],
-      providers: { llm: "rules", tts: "browser", ears: "ready", nose: "replay" },
+      providers: { llm: "rules", tts: "none", ears: "ready", nose: "replay" },
     };
   }
 
@@ -735,7 +735,7 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
     },
     sounds: async () => ({ clips: SOUND_CLIPS.map((c) => ({ ...c })) }),
     hosts: async () => ({ port: Number(window.location.port) || 80, hosts: [] }), // mock: no LAN discovery; the page falls back to window.location
-    speak: async () => null, // mock has no TTS provider -> speechSynthesis fallback
+    speak: async () => null, // mock has no TTS provider -> lines are shown, not spoken
   };
 
   return {

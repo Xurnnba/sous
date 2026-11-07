@@ -86,7 +86,7 @@ export function normaliseState(raw: unknown): State {
     actions: Array.isArray(r.actions) ? (r.actions as State["actions"]) : [],
     providers: {
       llm: (providers.llm as State["providers"]["llm"]) ?? "rules",
-      tts: (providers.tts as State["providers"]["tts"]) ?? "browser",
+      tts: (providers.tts as State["providers"]["tts"]) ?? "none",
       ears: (providers.ears as State["providers"]["ears"]) ?? (ears.mics.length ? "ready" : "unloaded"),
       nose: typeof providers.nose === "string" ? providers.nose : smell.device,
     },

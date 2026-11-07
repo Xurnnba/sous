@@ -4,7 +4,7 @@ Order of preference for a line of text:
 1. ``voice_cache/<sha1(text)>.mp3`` — pre-rendered ElevenLabs clips for the demo's fixed lines
    (rendered with the "Deon M" assistant voice; see tools/render_voice_cache.py).
 2. ElevenLabs API, if ELEVENLABS_API_KEY is set; the result is written into the cache.
-3. ``None`` → the browser's speechSynthesis speaks it.
+3. ``None`` → the line is shown on screen but not spoken (the browser voice is never used).
 
 So the signature moments of the demo sound the same with or without a key, and with a key every
 line does.
@@ -26,7 +26,7 @@ _ELEVEN_KEY = os.environ.get("ELEVENLABS_API_KEY")
 _ELEVEN_VOICE = os.environ.get("ELEVENLABS_VOICE_ID", "MVc9udK5w93ZDKCXnhBy")
 _ELEVEN_MODEL = os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
 
-PROVIDER = "elevenlabs" if _ELEVEN_KEY else ("cache" if any(CACHE_DIR.glob("*.mp3")) else "browser")
+PROVIDER = "elevenlabs" if _ELEVEN_KEY else ("cache" if any(CACHE_DIR.glob("*.mp3")) else "none")
 
 
 def cache_key(text: str) -> str:

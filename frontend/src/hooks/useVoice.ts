@@ -11,16 +11,10 @@ export type VoiceState = {
   say: (text: string) => void;
 };
 
-function pickVoice(): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis?.getVoices() ?? [];
-  const en = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
-  const preferred = en.find((v) => /google us english|samantha|daniel|natural|neural/i.test(v.name));
-  return preferred ?? en[0] ?? voices[0] ?? null;
-}
-
 /**
  * Serial voice queue. Every `speak` frame is spoken once, in order, never overlapping.
- * Each line first tries POST /api/speak (audio/mpeg); 204 -> window.speechSynthesis.
+ * Each line is played from POST /api/speak (ElevenLabs audio/mpeg). If the server has no ElevenLabs
+ * clip for it (204), the line is shown but not spoken: the browser's built-in voice is never used.
  */
 export function useVoice(): VoiceState {
   const { onSpeak, api, state, mock } = useSous();
@@ -55,27 +49,6 @@ export function useVoice(): VoiceState {
       audio.play().catch(() => resolve());
     });
 
-  const synth = (text: string) =>
-    new Promise<void>((resolve) => {
-      const ss = window.speechSynthesis;
-      if (!ss) return resolve();
-      const u = new SpeechSynthesisUtterance(text);
-      const v = pickVoice();
-      if (v) u.voice = v;
-      u.lang = v?.lang ?? "en-US";
-      u.rate = 1.05;
-      u.pitch = 1;
-      u.onend = u.onerror = () => resolve();
-      // Safety: some browsers never fire onend if the tab is backgrounded.
-      const guard = window.setTimeout(resolve, Math.max(4000, text.length * 90));
-      u.onend = () => {
-        window.clearTimeout(guard);
-        resolve();
-      };
-      ss.cancel();
-      ss.speak(u);
-    });
-
   const drain = useCallback(async () => {
     if (busy.current) return;
     busy.current = true;
@@ -91,7 +64,6 @@ export function useVoice(): VoiceState {
       try {
         const blob = await api.speak(next.text).catch(() => null);
         if (blob) await playBlob(blob);
-        else await synth(next.text);
       } finally {
         setSpeaking(false);
       }
@@ -112,20 +84,11 @@ export function useVoice(): VoiceState {
 
   useEffect(() => onSpeak(enqueue), [onSpeak, enqueue]);
 
-  // Warm the voice list (Chrome loads voices async).
-  useEffect(() => {
-    window.speechSynthesis?.getVoices();
-    const h = () => window.speechSynthesis?.getVoices();
-    window.speechSynthesis?.addEventListener?.("voiceschanged", h);
-    return () => window.speechSynthesis?.removeEventListener?.("voiceschanged", h);
-  }, []);
-
   const setMuted = useCallback(
     (m: boolean) => {
       mutedRef.current = m;
       setMutedState(m);
       if (m) {
-        window.speechSynthesis?.cancel();
         audioRef.current?.pause();
         queue.current = [];
         setQueued(0);
@@ -141,7 +104,7 @@ export function useVoice(): VoiceState {
     [enqueue],
   );
 
-  // In mock mode browsers block speech before a user gesture; that's fine, the bar still shows text.
+  // Mock mode has no ElevenLabs provider, so lines are shown, not spoken.
   void mock;
 
   return { current, speaking, queued, muted, setMuted, say };

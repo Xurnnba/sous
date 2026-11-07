@@ -20,7 +20,7 @@ export type SousApi = {
   sounds: () => Promise<{ clips: SoundClip[] }>;
   /** LAN addresses the backend is reachable on, for the phone QR code. */
   hosts: () => Promise<HostsResponse>;
-  /** Returns an MP3 blob when the server has a TTS provider; null on 204 (use speechSynthesis). */
+  /** Returns an MP3 blob when the server has a TTS provider; null on 204 (no ElevenLabs clip: show the line, don't speak it). */
   speak: (text: string) => Promise<Blob | null>;
 };
 
