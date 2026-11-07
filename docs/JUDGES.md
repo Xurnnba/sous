@@ -11,7 +11,7 @@ We would rather you know exactly where the seams are than discover one yourself.
 | Nose: signal pipeline | `backend/sous/senses/smell.py` | Baseline, humidity compensation, ratio, derivative, hysteresis anomaly detector, signature classifier, escalation. Accepts readings from a board over HTTP or serial. |
 | Nose: firmware and bridge | `firmware/`, `tools/serial_bridge.py` | ESP32 + BME688 and Arduino + MQ-135 sketches that post the exact JSON the endpoint accepts. Written against the real Adafruit library API. **Not flashed or run: we had no board.** |
 | Order stream → inventory → storefront | `backend/sous/sim/world.py`, `backend/sous/agent/brain.py` | Recipe-level decrement per fired ticket, trailing-window burn rate, minutes-to-stockout, pull items before they 86, promote a substitute, draft a reorder, restore when restocked. |
-| Agent and voice | `backend/sous/agent/brain.py`, `llm.py` | Rules decide what to do; the LLM phrases the line and fuses nose context. Hard 6 s timeout and full fallback so the demo never waits on an API. |
+| Agent and voice | `backend/sous/agent/brain.py`, `llm.py`, `tts.py` | Rules decide what to do; the LLM phrases the line and fuses nose context. Hard 6 s timeout and full fallback so the demo never waits on an API. Fixed lines are pre-rendered with ElevenLabs; dynamic fire calls use ElevenLabs when a key is set, else the browser voice. |
 | Dashboard | `frontend/` | Kitchen display, customer storefront, back office, senses/hardware page. |
 
 ## Simulated: realistic data standing in for a live feed

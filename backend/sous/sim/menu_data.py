@@ -8,7 +8,7 @@ what makes the stockout prediction interesting to watch.
 # ingredient name -> (unit, on_hand at open, par level, location, days_in_stock at open)
 INGREDIENTS = {
     # avocado is the star of the demo: short stock, heavy demand, most perishable thing in the walk-in
-    "avocado":        ("each", 14,  30, "walk-in",     4),
+    "avocado":        ("each", 11,  30, "walk-in",     4),
     "chicken":        ("lb",   45,  60, "walk-in",     2),
     "carnitas":       ("lb",   38,  50, "walk-in",     1),
     "tortilla":       ("each", 400, 500, "dry",        3),

@@ -32,6 +32,11 @@ LINES = [
     "Door chime. Nothing on the pickup shelf.",
     "It's loud. Call your orders back so nothing gets missed.",
     "Nose picked up something in the walk-in I can't place. Can someone take a look?",
+    "Avocado is about to run out. Pulling Avocado Toast, Guacamole and Chips and Breakfast Burrito from DoorDash and Uber Eats now, promoting Heirloom Tomato Toast at 15 percent off. Reorder draft is ready.",
+    "Dasher at the door. Bag's on the shelf, check the name.",
+    "Door chime. Nothing ready for pickup yet, let the Dasher know.",
+    "Fries up. Match them to the ticket.",
+    "Heard a ticket print. Adding it to the board.",
 ]
 
 CACHE = Path(__file__).resolve().parents[1] / "backend" / "voice_cache"

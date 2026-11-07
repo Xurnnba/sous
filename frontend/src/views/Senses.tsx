@@ -51,7 +51,18 @@ export function Senses({ audio }: { audio: AudioStreamState }) {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-4 grid grid-cols-[1.3fr_1fr] gap-4">
+    <div className="h-full overflow-y-auto p-4 grid grid-cols-[1.3fr_1fr] gap-4 content-start">
+      <header className="col-span-2 flex items-center justify-between">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Sensor status · providers</div>
+          <h1 className="text-2xl font-black">Senses</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="pill bg-ink-800 text-zinc-300 border border-ink-600">LLM · {state.providers.llm}</span>
+          <span className="pill bg-ink-800 text-zinc-300 border border-ink-600">TTS · {state.providers.tts}</span>
+          <span className="pill bg-ink-800 text-zinc-300 border border-ink-600">Nose · {smell.device}</span>
+        </div>
+      </header>
       {/* NOSE */}
       <div className="flex flex-col gap-4">
         {smell.device === "replay" && (

@@ -7,12 +7,13 @@ import { SousProvider, useSous } from "./hooks/useSous";
 import { useVoice } from "./hooks/useVoice";
 import { BackOffice } from "./views/BackOffice";
 import { Kitchen } from "./views/Kitchen";
+import { Live } from "./views/Live";
 import { Senses } from "./views/Senses";
 import { Storefront } from "./views/Storefront";
 
 function viewFromHash(): View {
   const h = window.location.hash.replace(/^#\/?/, "") as View;
-  return VIEWS.some((v) => v.id === h) ? h : "kitchen";
+  return VIEWS.some((v) => v.id === h) ? h : "live";
 }
 
 function Shell() {
@@ -37,8 +38,8 @@ function Shell() {
 
   return (
     <div className="h-full flex flex-col min-w-[1024px]">
-      <TopNav view={view} onChange={change} status={status} />
-      <ControlBar voice={voice} audio={audio} view={view} onChangeView={change} />
+      <TopNav view={view} onChange={change} />
+      <ControlBar voice={voice} audio={audio} onChangeView={change} status={status} />
       {mock && (
         <div className="shrink-0 text-center text-[11px] py-1 bg-fuchsia-500/10 text-fuchsia-300 border-b border-fuchsia-500/20">
           Mock mode — an in-browser simulator is standing in for the backend. Remove <code>?mock=1</code> to connect to FastAPI on :8000.
@@ -50,6 +51,7 @@ function Shell() {
         </div>
       )}
       <main className="flex-1 min-h-0">
+        {view === "live" && <Live voice={voice} />}
         {view === "kitchen" && <Kitchen />}
         {view === "storefront" && <Storefront />}
         {view === "backoffice" && <BackOffice />}

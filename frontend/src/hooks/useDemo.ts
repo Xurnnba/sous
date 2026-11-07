@@ -32,7 +32,7 @@ export const DEMO_STEPS: DemoStep[] = [
     },
   },
   { at: 3, label: "ears", run: ({ playSoundtrack }) => playSoundtrack() },
-  { at: 45, label: "storefront", run: ({ go }) => go("storefront") },
+  { at: 52, label: "storefront", run: ({ go }) => go("storefront") },
   {
     at: 60,
     label: "nose · spoilage",

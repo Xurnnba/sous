@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import os
 import time
 from typing import Awaitable, Callable, Optional
 
@@ -20,12 +21,15 @@ from ..sim.menu_data import SUBSTITUTES, pretty
 from ..sim.world import World
 from ..senses.hearing import HearingClassifier
 from ..senses.smell import SmellPipeline
-from . import llm
+from . import llm, tts
 
-STOCKOUT_HORIZON_MIN = 15.0     # sim minutes
+STOCKOUT_HORIZON_MIN = 18.0     # sim minutes
 MIN_HISTORY_MIN = 4.0           # don't forecast off the first couple of tickets
 FIRE_SPEECH_GAP_S = 8.0
 REORDER_SUPPLIER = "Paragon Foods"
+# Fire calls are dynamic text ("Fire D-104, Crispy Fries"), so without a runtime TTS key they'd be the
+# only lines in the browser voice. Default: speak them only when every line can use the same voice.
+SPEAK_FIRE_CALLS = os.environ.get("SOUS_SPEAK_FIRE_CALLS", "auto")
 SUB_DISCOUNT_PCT = 15
 PUSH_DISCOUNT_PCT = 20
 
@@ -97,13 +101,13 @@ class Brain:
                 items = ", ".join(f"{i['qty']}x {i['name']}" for i in o.items)
                 self.act("fire_now" if o.fire_at <= w.sim_minutes + 0.5 else "speak",
                          f"Heard a ticket print: {o.id} ({o.channel}) added to the board", order_id=o.id)
-                self._bg(self.say(f"Heard a ticket. {o.id} on the board, {items}." if len(o.items) == 1 else f"Heard a ticket. {o.id} on the board, {len(o.items)} items.", self._ctx()))
+                self._bg(self.say("Heard a ticket print. Adding it to the board."))
         elif kind == "fryer_alarm":
             fry = [o for o in w.orders if o.status == "cooking" and any("fryer" in w.menu[i["id"]].tags for i in o.items)]
             if fry:
                 ids = ", ".join(o.id for o in fry[:2])
                 self.act("speak", f"Fryer alarm matched to {ids}", order_ids=[o.id for o in fry])
-                self._bg(self.say(f"Fries up for {ids}.", priority=True))
+                self._bg(self.say("Fries up. Match them to the ticket.", priority=True))
             else:
                 # sad path: an alarm nobody is waiting for
                 self.act("ask_human", "Fryer alarm with nothing on the fryer ticket", station="fry-station")
@@ -116,13 +120,12 @@ class Brain:
                 o = ready[0]
                 w.pick_up(o)
                 self.act("speak", f"Dasher at the door matched to {o.id}", order_id=o.id)
-                self._bg(self.say(f"Dasher at the door for {o.id}. Bag's on the shelf, check the name.", priority=True))
+                self._bg(self.say("Dasher at the door. Bag's on the shelf, check the name.", priority=True))
             elif soon:
                 o = min(soon, key=lambda x: x.fire_at + x.prep_minutes)
                 mins = max(0.5, o.fire_at + o.prep_minutes + 0.5 - w.sim_minutes)
                 self.act("speak", f"Dasher early for {o.id}", order_id=o.id, minutes=round(mins, 1))
-                self._bg(self.say(f"Door chime. Nothing ready for pickup yet. {o.id} is about {mins:.0f} minutes out, "
-                                  f"let the Dasher know.", priority=True))
+                self._bg(self.say("Door chime. Nothing ready for pickup yet, let the Dasher know.", priority=True))
             else:
                 self._bg(self.say("Door chime. Nothing on the pickup shelf."))
         elif kind == "noise_spike":
@@ -243,11 +246,13 @@ class Brain:
                 self.act("reorder_draft", f"{name}: {qty:.0f} {ing.unit} from {REORDER_SUPPLIER}",
                          supplier=REORDER_SUPPLIER, ingredient=ing.name, qty=round(qty), unit=ing.unit,
                          note="auto-drafted on predicted stockout; owner approves")
-                when = f"in about {mts:.0f} minutes" if forecast_low else "now"
-                line = (f"{name.capitalize()} runs out {when}. Pulling {' and '.join(names)} from DoorDash and "
-                        f"Uber Eats now" + (f", promoting {subs[0]} at {SUB_DISCOUNT_PCT} percent off" if subs else "")
-                        + f". Reorder draft for {qty:.0f} {ing.unit} is ready.")
-                await self.say(line, self._ctx(), priority=True)
+                spoken = [n.replace("&", "and").replace(" (3)", "") for n in names]
+                pulled = spoken[0] if len(spoken) == 1 else ", ".join(spoken[:-1]) + " and " + spoken[-1]
+                verb = "is about to run out" if forecast_low else "is out"
+                line = (f"{name.capitalize()} {verb}. Pulling {pulled} from DoorDash and Uber Eats now"
+                        + (f", promoting {subs[0].replace('&', 'and')} at {SUB_DISCOUNT_PCT} percent off" if subs else "")
+                        + ". Reorder draft is ready.")
+                await self.say(line, priority=True)
             elif hidden and not low and ing.on_hand >= ing.par * 0.5:
                 # restocked (human pressed "we got more"): restore
                 for mid in list(hidden):
@@ -281,7 +286,11 @@ class Brain:
         else:
             line = f"Fire {orders[0].id}, {orders[1].id}, {orders[2].id} and {len(orders) - 3} more. Call them back."
         self.act("fire_now", line, order_ids=[o.id for o in orders])
-        await self.say(line)
+        speak = SPEAK_FIRE_CALLS == "1" or (SPEAK_FIRE_CALLS == "auto" and tts.PROVIDER == "elevenlabs")
+        if speak:
+            await self.say(line)
+        else:
+            self.last_line = line  # shown on the voice bar, not spoken
 
     def human_restore(self, mid: str) -> None:
         """Staff pressed 'We got more' on an item: treat it as a delivery of every scarce ingredient in it."""

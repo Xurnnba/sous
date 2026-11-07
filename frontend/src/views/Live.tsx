@@ -1,4 +1,5 @@
 import { ClipboardList, Ear, EyeOff, Flame, Hand, ReceiptText, RotateCcw, Shuffle, Store, Tag, Volume2, VolumeX, Wind } from "lucide-react";
+import type { ReactNode } from "react";
 import { Empty } from "../components/common";
 import { NoiseMeter } from "../components/Gauges";
 import { useSous } from "../hooks/useSous";
@@ -23,7 +24,8 @@ function triggeredBy(a: Action): Exclude<Sense, "agent"> | null {
   if ("ingredient" in p) return "orders";
   const text = `${a.summary} ${JSON.stringify(p)}`.toLowerCase();
   if ("station" in p || /\b(nose|smell|spoil|burn|voc|walk-in|fryer oil)\b/.test(text)) return "smell";
-  if ("order_id" in p) return "hearing";
+  if (/\b(heard|ticket print|dasher|door|fryer alarm|loud)\b/.test(text)) return "hearing";
+  if (a.type === "fire_now" || "order_id" in p || "order_ids" in p) return "orders";
   return null;
 }
 
@@ -51,7 +53,7 @@ function Sparkline({ points }: { points: { t: number; ratio: number }[] }) {
   );
 }
 
-function SenseCard({ icon: Icon, name, status, tone, children, badge }: { icon: typeof Ear; name: string; status: string; tone: "ok" | "warn" | "bad" | "muted"; children: React.ReactNode; badge?: string }) {
+function SenseCard({ icon: Icon, name, status, tone, children, badge }: { icon: typeof Ear; name: string; status: string; tone: "ok" | "warn" | "bad" | "muted"; children: ReactNode; badge?: string }) {
   const toneCls = { ok: "text-ok", warn: "text-warn", bad: "text-bad", muted: "text-zinc-500" }[tone];
   const ring = { ok: "border-ok/30", warn: "border-warn/40", bad: "border-bad/50", muted: "border-ink-700" }[tone];
   return (

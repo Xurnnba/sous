@@ -69,7 +69,7 @@ type Order = {
 };
 
 type Ingredient = {
-  name: string; unit: string;
+  name: string; label: string; unit: string;
   on_hand: number; par: number;
   burn_rate_per_min: number;
   minutes_to_stockout: number | null;
@@ -84,7 +84,8 @@ type MenuItem = {
   discount_pct: number;       // 0 if none
   reason: string | null;      // why hidden/discounted, shown in storefront as tooltip
   substitute_for: string | null; // menu id this is being promoted in place of
-  ingredients: { name: string; qty: number }[];
+  emoji: string;                 // card art, e.g. "🥑"
+  ingredients: { name: string; qty: number; label: string }[];  // label = human-readable name
   tags: string[];
 };
 
@@ -123,7 +124,7 @@ type Action = {
 | POST | `/api/hearing/inject` | `{ kind: "ticket_burst" \| "fryer_alarm" \| "door_chime" }` | scripted fallback if the room is too loud |
 | GET | `/api/demo/soundtrack.wav` | | generated 75 s kitchen soundtrack with known events |
 | GET | `/api/demo/soundtrack.json` | | ground-truth event timestamps in that soundtrack |
-| POST | `/api/speak` | `{ text }` | returns `audio/mpeg` if a TTS provider is configured, else `204` (client uses speechSynthesis) |
+| POST | `/api/speak` | `{ text }` | returns `audio/mpeg` from the pre-rendered cache or ElevenLabs (if key set), else `204` (client uses speechSynthesis) |
 
 ## WebSocket `/ws/audio` (client → server)
 

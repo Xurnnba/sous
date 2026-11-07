@@ -39,15 +39,21 @@ Optional environment:
 |---|---|
 | `ANTHROPIC_API_KEY` | Agent phrases its lines and fuses nose context with Claude (`SOUS_MODEL`, default `claude-sonnet-5-5`) |
 | `NOVA_TEAM_ID`, `NOVA_SERVER_URL` | Same, through the hackathon's Nova model proxy (`pip install nova-client-sdk`) |
-| `ELEVENLABS_API_KEY` | Server-side voice; otherwise the browser's speech synthesis speaks |
+| `ELEVENLABS_API_KEY` | Every spoken line rendered by ElevenLabs at runtime (voice "Deon M", override with `ELEVENLABS_VOICE_ID`) |
 | `SOUS_NOSE_AUTOSTART=0` | Don't start the sensor simulator; wait for a real board |
 
-Without any of them it runs fully in rules mode with the browser voice. Nothing in the demo
-depends on an external API.
+Without any of them it runs fully in rules mode. Nothing in the demo depends on an external API.
+
+**Voice.** The demo's signature lines (stockout call, nose findings, fryer alarm, Dasher at the door,
+and so on) ship pre-rendered with ElevenLabs in `backend/voice_cache/`, so they sound the same with
+or without a key. Only the dynamic fire calls ("Fire D-104, Crispy Fries") fall back to the browser
+voice when no key is set. `tools/render_voice_cache.py` re-renders the fixed lines if you change them.
 
 ## The 3-minute demo
 
-Open the **Kitchen** tab on the projector; keep **Storefront** on a second screen or phone.
+Open the **Live** tab on the projector; keep **Storefront** on a second screen or phone. The
+**Run demo** button in the top bar plays the whole sequence below on its own (rush, soundtrack,
+tab switches, nose scenarios) over about 2.5 minutes, so you can narrate instead of clicking.
 
 1. **Sad path first (30 s).** Say: "Friday, 7 pm, every restaurant in Pittsburgh. Someone orders
    guacamole. The avocados ran out ten minutes ago. Nobody updated the app. The customer waits,

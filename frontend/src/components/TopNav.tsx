@@ -1,18 +1,16 @@
-import { Building2, ChefHat, Radar, Store } from "lucide-react";
-import type { ConnectionStatus } from "../types";
+import { Building2, ChefHat, Radar, Radio, Store } from "lucide-react";
 
-export type View = "kitchen" | "storefront" | "backoffice" | "senses";
+export type View = "live" | "kitchen" | "storefront" | "backoffice" | "senses";
 
 export const VIEWS: { id: View; label: string; icon: typeof ChefHat }[] = [
+  { id: "live", label: "Live", icon: Radio },
   { id: "kitchen", label: "Kitchen", icon: ChefHat },
   { id: "storefront", label: "Storefront", icon: Store },
   { id: "backoffice", label: "Back Office", icon: Building2 },
   { id: "senses", label: "Senses", icon: Radar },
 ];
 
-export function TopNav({ view, onChange, status }: { view: View; onChange: (v: View) => void; status: ConnectionStatus }) {
-  const dot = status === "open" || status === "mock" ? "bg-ok" : status === "connecting" ? "bg-warn animate-pulse" : "bg-bad";
-  const label = status === "mock" ? "mock backend" : status === "open" ? "live" : status === "connecting" ? "connecting" : "reconnecting";
+export function TopNav({ view, onChange }: { view: View; onChange: (v: View) => void }) {
   return (
     <div className="flex items-center gap-6 px-5 h-14 border-b border-ink-700 bg-ink-900 shrink-0">
       <div className="flex items-baseline gap-3 shrink-0">
@@ -35,10 +33,6 @@ export function TopNav({ view, onChange, status }: { view: View; onChange: (v: V
           );
         })}
       </nav>
-      <div className="ml-auto flex items-center gap-2 text-xs text-zinc-400">
-        <span className={`w-2 h-2 rounded-full ${dot}`} />
-        {label}
-      </div>
     </div>
   );
 }
