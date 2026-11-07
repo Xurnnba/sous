@@ -40,6 +40,10 @@ from .model import NoseModel
 WARMUP_SAMPLES = 12          # ~300 with real hardware (5 min heater settle); 12 so the demo is online in seconds
 MIN_WINDOW_SAMPLES = 8       # status "calibrating" until the window has this many ratios
 SUSTAIN_SAMPLES = 3          # consecutive same-class predictions before an anomaly is declared
+# Slow phenomena must be sustained longer before we call them: a breath or a door swing is over in
+# a few seconds, spoilage and oil degradation are not. Fast, dangerous classes keep the short fuse.
+SUSTAIN_BY_CLASS = {"spoilage_produce": 7, "spoilage_protein": 7, "oil_degraded": 7, "burning": SUSTAIN_SAMPLES,
+                    "cleaning": SUSTAIN_SAMPLES}
 UNKNOWN_SUSTAIN_SAMPLES = 8  # consecutive large-but-unnamed deviations before "unknown" is declared
 CLEAR_SAMPLES = 8            # consecutive nominal readings before an anomaly clears
 MIN_DEVIATION = 0.12         # |log ratio| floor (~12 %) for any anomaly, keeps noise from ever firing
@@ -190,7 +194,7 @@ class NosePipeline:
 
         if self.status != "anomaly":
             self.status = "nominal"
-            if named and self._streak >= SUSTAIN_SAMPLES:
+            if named and self._streak >= SUSTAIN_BY_CLASS.get(label, SUSTAIN_SAMPLES):
                 self._raise(label, pred, dev)
             elif self._unknown_streak >= UNKNOWN_SUSTAIN_SAMPLES:
                 self._raise("unknown", pred, dev)

@@ -11,11 +11,13 @@ What was verified, how, and what could not be verified from the build machine.
 | Ears, teach printer for 6 s through the mic, replay | recognised `taught · 0.93` |
 | Ears, prototypes and room noise persist across reconnects and restarts | yes (`data/ear_prototypes.json`, `data/ear_rooms.json`) |
 | Nose, held-out accuracy (synthetic physics windows) | 0.954 overall, 0.997 on 4-step fingerprints |
-| Nose, scenario sequence spoilage → burning → cleaning → nominal → oil → door → protein | one correct event each, 3–9 s latency, nothing on nominal / door / tails, 10/10 seeds |
+| Nose, scenario sequence spoilage → burning → cleaning → nominal → oil → door → protein | one correct event each, 3–13 s latency (slow classes now need 7 s of sustained signal so a breath cannot pass as spoilage), nothing on nominal / door / tails, 10/10 seeds |
 | Agent, items from every sense with dedupe, urgency, auto-actions, auto-resolve, Done/Dismiss via UI | yes |
 | Storefront pull / promote / reorder on predicted stockout, restore on "We got more" | yes |
 | Voice, every fixed line served as a cached ElevenLabs clip | 20/20 lines hit the cache |
 | Frontend, all six views at 1440×900 and Sounds at 390×844, 7 open items with scrolling columns, voice panel on screen, zero console errors | yes (screenshots in `docs/screenshots/`) |
+| Hostile rush: 2× speed, a hearing event every 3 s for 2 minutes across three locations, two nose scenarios mid-rush | peak 10 open items (dedupe by key keeps it bounded), 21 tickets on the board, 55 served, 3 dishes pulled, columns scroll, zero console errors (`board-rush.png`) |
+| Nose out-of-distribution (`tests/eval_nose_ood.py`): sensor gain 0.4 and 2.2 (trained 0.6–1.6), 2 % noise, 3× drift, fingerprint sensitivities jittered ±25–35 % | 88/96 scenarios correct; the misses are oil-vs-protein under heavy jitter and burning-vs-oil at very low gain, both documented ambiguities; nuisances (door, breath, nominal) produce no events |
 | Nose page during a sensor relocation shows a coherent "Calibrating at <location> · n/6" state | yes |
 | Backend log after the full run | 0 tracebacks |
 
