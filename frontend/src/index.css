@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body { font-family: Inter, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #36363e; border-radius: 8px; }
+
+@layer components {
+  .panel { @apply bg-ink-900 border border-ink-700 rounded-xl; }
+  .panel-title { @apply text-xs uppercase tracking-[0.18em] text-zinc-400 font-semibold; }
+  .btn { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border border-ink-600 bg-ink-800 hover:bg-ink-700 text-zinc-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed; }
+  .btn-accent { @apply border-accent/60 bg-accent/15 text-accent-soft hover:bg-accent/25; }
+  .btn-on { @apply border-ok/60 bg-ok/15 text-ok; }
+  .btn-danger { @apply border-bad/60 bg-bad/15 text-bad hover:bg-bad/25; }
+  .pill { @apply inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide; }
+  .num { @apply font-mono tabular-nums; }
+}
