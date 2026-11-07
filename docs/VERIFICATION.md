@@ -34,10 +34,23 @@ session cookie, after the owner ran `share set-public`:
 The connected mic is the end-to-end proof for the hosted path: browser microphone → `/ws/audio` through
 the TLS proxy → YAMNet on the VM → state back over `/ws`.
 
+## Verified in the real room by the owner's own microphone (20:30, 7 Nov)
+
+While the owner rehearsed, their real device (mic `ssvyzc`, location "front") produced these items on
+the hosted Board, all zero-shot with no prior teaching, all at phone-across-a-room levels:
+
+| Item | Heard as | Level | Outcome |
+|---|---|---|---|
+| Fries up: plate them for U-10 (fryer alarm matched to a cooking fries order) | Beep, bleep | -32 dBFS | marked Done by the owner |
+| Phone ringing: pick up | Ringtone | -38 dBFS | expired on its own |
+| Something dropped at the front: check for breakage | Glass | -37 dBFS | open |
+
+This is the phone → room → laptop microphone → proxy → model → Board path working in the actual venue.
+
 ## Not verifiable from the build VM, and why
 
-* **Speaker playback in the room.** The VM has no audio device. The clips and voice files are served
-  correctly over the proxy (verified above); whether the room's speakers are loud enough for the
-  laptop mic to hear the phone is a rehearsal question, not a software one.
+* **Speaker playback of the voice lines** was not observed from the VM (no audio device here); the
+  clips are served correctly over the proxy and the owner's microphone picked up the phone's playback
+  of the sound clips in the room (above).
 * **A real gas sensor.** None was available; the classifier is trained and evaluated on the physics
   model, so its accuracy is an upper bound until it sees logged sensor data.

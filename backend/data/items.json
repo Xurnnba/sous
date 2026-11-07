@@ -1,5 +1,5 @@
 {
-"seq": 23,
+"seq": 24,
 "items": [
 {
 "id": "i19",
@@ -65,7 +65,7 @@
 "sense": "hearing",
 "kind": "phone_ring",
 "key": "phone",
-"status": "open",
+"status": "expired",
 "count": 1,
 "auto": null,
 "evidence": {
@@ -78,7 +78,9 @@
 },
 "speak": null,
 "location": "front",
-"expires_at": 1794083556.2891607
+"expires_at": 1794083556.2891607,
+"closed": "2026-11-07T20:32:36",
+"closed_by": "timeout"
 },
 {
 "id": "i22",
@@ -104,6 +106,33 @@
 "speak": null,
 "location": "front",
 "expires_at": 1794083636.8663263
+},
+{
+"id": "i23",
+"created": "2026-11-07T20:33:27",
+"updated": "2026-11-07T20:33:27",
+"title": "Phone ringing: pick up, likely a phone order",
+"detail": "Heard the landline at the kitchen.",
+"urgency": "now",
+"sense": "hearing",
+"kind": "phone_ring",
+"key": "phone",
+"status": "dismissed",
+"count": 1,
+"auto": null,
+"evidence": {
+"mic": "inject",
+"location": "kitchen",
+"how": "injected",
+"confidence": 1.0,
+"heard_as": "injected",
+"db": null
+},
+"speak": null,
+"location": "kitchen",
+"expires_at": 1794083667.0474625,
+"closed": "2026-11-07T20:33:46",
+"closed_by": "owner"
 }
 ]
 }
