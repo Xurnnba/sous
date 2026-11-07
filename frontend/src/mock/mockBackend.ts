@@ -84,7 +84,7 @@ const HEARING_LINES: { kind: string; label: string; heard_as: string; detail: st
 
 const SOUND_CLIPS: SoundClip[] = [
   { id: "ticket_printer", name: "Ticket printer", kind: "ticket_burst", emoji: "🧾", hint: "An order printed off the POS", available: true, url: "/api/sounds/ticket_printer.wav" },
-  { id: "fryer_alarm", name: "Fryer alarm", kind: "fryer_alarm", emoji: "🍟", hint: "Fryer timer going off", available: true, url: "/api/sounds/fryer_alarm.wav" },
+  { id: "fryer_alarm", name: "Fryer alarm", kind: "fryer_alarm", emoji: "🍟", hint: "Fryer timer beeping", available: true, url: "/api/sounds/fryer_alarm.wav" },
   { id: "door_chime", name: "Door chime", kind: "door_chime", emoji: "🔔", hint: "Someone at the front door", available: true, url: "/api/sounds/door_chime.wav" },
   { id: "phone_ring", name: "Phone ringing", kind: "phone_ring", emoji: "📞", hint: "Landline order coming in", available: true, url: "/api/sounds/phone_ring.wav" },
   { id: "plates_crash", name: "Plates crash", kind: "clatter", emoji: "🍽️", hint: "Something dropped", available: true, url: "/api/sounds/plates_crash.wav" },

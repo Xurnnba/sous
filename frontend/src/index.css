@@ -10,12 +10,14 @@ body { font-family: Inter, ui-sans-serif, system-ui, sans-serif; -webkit-font-sm
 ::-webkit-scrollbar-thumb { background: #36363e; border-radius: 8px; }
 
 @layer components {
-  .panel { @apply bg-ink-900 border border-ink-700 rounded-xl; }
-  .panel-title { @apply text-xs uppercase tracking-[0.18em] text-zinc-400 font-semibold; }
-  .btn { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border border-ink-600 bg-ink-800 hover:bg-ink-700 text-zinc-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed; }
-  .btn-accent { @apply border-accent/60 bg-accent/15 text-accent-soft hover:bg-accent/25; }
-  .btn-on { @apply border-ok/60 bg-ok/15 text-ok; }
-  .btn-danger { @apply border-bad/60 bg-bad/15 text-bad hover:bg-bad/25; }
-  .pill { @apply inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide; }
+  .panel { @apply bg-ink-900 border border-ink-800 rounded-lg; }
+  .panel-title { @apply text-[13px] text-zinc-400 font-medium; }
+  .btn { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-ink-700 bg-ink-800 hover:bg-ink-700 text-zinc-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed; }
+  .btn-accent { @apply border-accent/40 bg-accent/10 text-accent-soft hover:bg-accent/20; }
+  .btn-on { @apply border-ok/40 bg-ok/10 text-ok; }
+  .btn-danger { @apply border-bad/40 bg-bad/10 text-bad hover:bg-bad/20; }
+  .pill { @apply inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium; }
+  /* small muted label above a value; replaces uppercase + wide tracking */
+  .label { @apply text-[11px] text-zinc-500; }
   .num { @apply font-mono tabular-nums; }
 }

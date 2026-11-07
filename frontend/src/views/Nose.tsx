@@ -45,8 +45,8 @@ function Fingerprint({ ratios }: { ratios: number[] | null }) {
   const span = Math.max(0.45, ...logs.map((l) => Math.abs(l))) * 1.15; // symmetric scale in log space
   return (
     <div className="relative h-52 grid grid-cols-4 gap-3 pl-14 pr-2">
-      <div className="absolute left-0 right-0 top-1/2 border-t border-dashed border-zinc-500/70 pointer-events-none" />
-      <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 num bg-ink-900 pr-1 pointer-events-none">1.0 base</span>
+      <div className="absolute left-0 right-0 top-1/2 border-t border-dashed border-zinc-700 pointer-events-none" />
+      <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 num bg-ink-900 pr-1 pointer-events-none">1.0 base</span>
       {ratios.map((r, i) => {
         const l = logs[i];
         const h = Math.min(50, (Math.abs(l) / span) * 50);
@@ -54,12 +54,12 @@ function Fingerprint({ ratios }: { ratios: number[] | null }) {
         return (
           <div key={i} className="relative flex flex-col items-center justify-end h-full">
             <div className="absolute left-0 right-0" style={{ top: up ? `${50 - h}%` : "50%", height: `${Math.max(0.6, h)}%` }}>
-              <div className={`mx-auto w-3/5 h-full rounded-md transition-all duration-500 ${up ? "bg-accent" : "bg-sky-400"}`} />
+              <div className={`mx-auto w-3/5 h-full rounded-sm transition-all duration-500 ${up ? "bg-accent/60" : "bg-[#7aa7c7]/60"}`} />
             </div>
-            <div className={`absolute left-0 right-0 text-center num text-sm font-bold ${up ? "text-accent-soft" : "text-sky-300"}`} style={up ? { bottom: `${50 + h + 2}%` } : { top: `${50 + h + 2}%` }}>
+            <div className={`absolute left-0 right-0 text-center num text-sm font-medium text-zinc-200`} style={up ? { bottom: `${50 + h + 2}%` } : { top: `${50 + h + 2}%` }}>
               {r.toFixed(2)}
             </div>
-            <div className="absolute -bottom-1 left-0 right-0 text-center text-[11px] text-zinc-400 num">
+            <div className="absolute -bottom-1 left-0 right-0 text-center text-[11px] text-zinc-500 num">
               {HEATER_STEPS_C[i]} °C
             </div>
           </div>
@@ -89,7 +89,7 @@ export function Nose() {
   const anomalyLabel = smell.anomaly ? smellKindLabel[smell.anomaly.kind] ?? titleCase(smell.anomaly.kind) : null;
   const statusWord = smell.status === "anomaly" && anomalyLabel ? anomalyLabel : calibrating ? "Calibrating" : titleCase(smell.status);
   const statusTone = smell.status === "anomaly" ? (smell.anomaly?.urgency === "now" ? "text-bad" : "text-warn") : calibrating ? "text-warn" : smell.status === "nominal" ? "text-ok" : smell.status === "offline" ? "text-zinc-500" : "text-warn";
-  const calColor = cal.quality > 0.8 ? "#2fd673" : cal.quality > 0.5 ? "#ffb020" : "#ff4d4d";
+  const calColor = cal.quality > 0.8 ? "#5fb58a" : cal.quality > 0.5 ? "#d6a548" : "#e06c66";
   const yDomain: [number, number] = [Math.min(0.7, ...trace.map((p) => p.ratio)) - 0.05, Math.max(1.5, ...trace.map((p) => p.ratio)) + 0.1];
 
   const run = async (key: string, fn: () => Promise<unknown>) => {
@@ -109,50 +109,53 @@ export function Nose() {
         {/* HERO */}
         <header className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Nose · VOC heater-sweep fingerprint</div>
+            <div className="label">Nose · VOC heater-sweep fingerprint</div>
             <div className="flex items-baseline gap-3">
-              <h1 className={`text-4xl font-black leading-tight ${statusTone}`}>{statusWord}</h1>
-              <span className="text-lg text-zinc-300">
-                at <span className="font-bold capitalize text-zinc-100">{smell.location}</span>
+              <h1 className="flex items-center gap-2 text-2xl font-semibold leading-tight text-zinc-100">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${statusTone.replace("text-", "bg-")}`} />
+                {statusWord}
+              </h1>
+              <span className="text-base text-zinc-400">
+                at <span className="font-medium capitalize text-zinc-200">{smell.location}</span>
                 {smell.anomaly && <span className="text-sm text-zinc-500 ml-2">since {clockTime(smell.anomaly.since)}</span>}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`pill border ${smell.device === "replay" ? "bg-warn/15 text-warn border-warn/40" : smell.device === "none" ? "bg-ink-800 text-zinc-400 border-ink-600" : "bg-ok/15 text-ok border-ok/40"}`}>device · {smell.device}</span>
-            <span className="pill bg-ink-800 text-zinc-300 border border-ink-600 normal-case tracking-normal">
+            <span className={`pill border ${smell.device === "replay" ? "bg-warn/10 text-warn border-warn/25" : smell.device === "none" ? "bg-ink-800 text-zinc-500 border-ink-700" : "bg-ok/10 text-ok border-ok/25"}`}>device · {smell.device}</span>
+            <span className="pill bg-ink-800 text-zinc-400 border border-ink-700">
               {smell.model.name} · {smell.model.features} features · acc {smell.model.accuracy.toFixed(2)}
             </span>
-            <span className="pill bg-ink-800 text-zinc-300 border border-ink-600 num">{smell.sensor_id}</span>
+            <span className="pill bg-ink-800 text-zinc-400 border border-ink-700 num">{smell.sensor_id}</span>
           </div>
         </header>
 
         {smell.device === "replay" && (
-          <div className="rounded-xl border border-warn/40 bg-warn/10 text-warn px-4 py-3 flex items-start gap-3">
-            <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <div className="rounded-lg border border-warn/25 bg-warn/5 text-zinc-300 px-4 py-2.5 flex items-start gap-3">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warn" />
             <p className="text-sm">
-              <strong>No sensor board connected</strong> — replaying synthetic sensor data through the hardware endpoint. Firmware in <code className="num">/firmware</code>.
+              <strong className="font-medium text-zinc-100">No sensor board connected</strong> — replaying synthetic sensor data through the hardware endpoint. Firmware in <code className="num">/firmware</code>.
             </p>
           </div>
         )}
         {smell.device === "none" && (
-          <div className="rounded-xl border border-ink-600 bg-ink-800 text-zinc-300 px-4 py-3 flex items-start gap-3">
-            <Cpu size={18} className="mt-0.5 shrink-0" />
+          <div className="rounded-lg border border-ink-700 bg-ink-800/60 text-zinc-400 px-4 py-2.5 flex items-start gap-3">
+            <Cpu size={16} className="mt-0.5 shrink-0" />
             <p className="text-sm">No nose input. Plug in the ESP32 or start a scenario below.</p>
           </div>
         )}
 
         {/* MAIN GRID */}
         <div className="grid grid-cols-3 gap-4">
-          <Panel title="Fingerprint" right={<span className="text-[10px] text-zinc-500 uppercase tracking-widest">baseline / gas · per heater step</span>}>
+          <Panel title="Fingerprint" right={<span className="text-[11px] text-zinc-500">baseline / gas · per heater step</span>}>
             <Fingerprint ratios={smell.ratios} />
             <div className="flex justify-between text-[11px] text-zinc-500 mt-4">
               <span>
-                <span className="inline-block w-2 h-2 rounded-sm bg-accent mr-1" />
+                <span className="inline-block w-2 h-2 rounded-sm bg-accent/60 mr-1" />
                 above 1 · reducing gas (VOCs)
               </span>
               <span>
-                <span className="inline-block w-2 h-2 rounded-sm bg-sky-400 mr-1" />
+                <span className="inline-block w-2 h-2 rounded-sm bg-[#7aa7c7]/60 mr-1" />
                 below 1 · oxidising
               </span>
             </div>
@@ -164,13 +167,13 @@ export function Nose() {
             right={
               smell.status === "anomaly" && anomalyLabel ? (
                 <span className="flex items-center gap-1.5">
-                  <span className={`pill ${smell.anomaly?.urgency === "now" ? "bg-bad/15 text-bad" : "bg-warn/15 text-warn"} normal-case tracking-normal`}>{anomalyLabel}</span>
+                  <span className={`pill ${smell.anomaly?.urgency === "now" ? "bg-bad/10 text-bad" : "bg-warn/10 text-warn"}`}>{anomalyLabel}</span>
                   {smell.anomaly && <UrgencyPill urgency={smell.anomaly.urgency} />}
                 </span>
               ) : calibrating ? (
-                <span className="pill bg-warn/15 text-warn">calibrating</span>
+                <span className="pill bg-warn/10 text-warn">calibrating</span>
               ) : (
-                <span className={`pill ${smell.status === "nominal" ? "bg-ok/15 text-ok" : "bg-ink-700 text-zinc-300"}`}>{smell.status}</span>
+                <span className={`pill ${smell.status === "nominal" ? "bg-ok/10 text-ok" : "bg-ink-800 text-zinc-400"}`}>{smell.status}</span>
               )
             }
           >
@@ -190,23 +193,23 @@ export function Nose() {
                     const win = k === winner;
                     return (
                       <div key={k} className="flex items-center gap-3">
-                        <span className={`w-40 truncate text-sm ${win ? "font-black text-zinc-50" : "text-zinc-400"}`}>{smellKindLabel[k] ?? titleCase(k)}</span>
-                        <div className="flex-1 h-3 rounded-full bg-ink-700 overflow-hidden">
-                          <div className={`h-full rounded-full transition-all duration-500 ${win ? (k === "nominal" ? "bg-ok" : "bg-accent") : "bg-zinc-500"}`} style={{ width: `${Math.max(1, v * 100)}%` }} />
+                        <span className={`w-40 truncate text-sm ${win ? "font-medium text-zinc-100" : "text-zinc-500"}`}>{smellKindLabel[k] ?? titleCase(k)}</span>
+                        <div className="flex-1 h-1.5 rounded-full bg-ink-800 overflow-hidden">
+                          <div className={`h-full rounded-full transition-all duration-500 ${win ? (k === "nominal" ? "bg-ok/80" : "bg-accent/80") : "bg-zinc-600"}`} style={{ width: `${Math.max(1, v * 100)}%` }} />
                         </div>
-                        <span className={`num w-12 text-right text-sm ${win ? "font-black" : "text-zinc-500"}`}>{pct(v)}</span>
+                        <span className={`num w-12 text-right text-sm ${win ? "text-zinc-200" : "text-zinc-500"}`}>{pct(v)}</span>
                       </div>
                     );
                   })}
                 <div className="mt-3 flex items-end justify-between">
                   <div>
-                    <div className="text-[10px] uppercase tracking-widest text-zinc-500">Confidence</div>
-                    <div className="num text-3xl font-black">{pct(smell.anomaly?.confidence ?? (probs[winner ?? ""] ?? 0))}</div>
+                    <div className="label">Confidence</div>
+                    <div className="num text-2xl font-semibold text-zinc-100">{pct(smell.anomaly?.confidence ?? (probs[winner ?? ""] ?? 0))}</div>
                   </div>
                   {smell.anomaly && (
                     <div className="text-right">
-                      <div className="text-[10px] uppercase tracking-widest text-zinc-500">Urgency</div>
-                      <UrgencyPill urgency={smell.anomaly.urgency} className="text-sm px-3 py-1" />
+                      <div className="label mb-0.5">Urgency</div>
+                      <UrgencyPill urgency={smell.anomaly.urgency} className="text-xs px-2 py-0.5" />
                     </div>
                   )}
                 </div>
@@ -214,12 +217,12 @@ export function Nose() {
             )}
           </Panel>
 
-          <Panel title="Calibration" right={<span className={`pill border ${calibrating ? "bg-warn/15 text-warn border-warn/40" : "bg-ink-800 text-zinc-300 border-ink-600"}`}>{calibrating ? "calibrating" : cal.status}</span>}>
+          <Panel title="Calibration" right={<span className={`pill border ${calibrating ? "bg-warn/10 text-warn border-warn/25" : "bg-ink-800 text-zinc-400 border-ink-700"}`}>{calibrating ? "calibrating" : cal.status}</span>}>
             <div className="flex items-center gap-4">
-              <Ring value={cal.quality} size={88} stroke={9} color={calColor}>
+              <Ring value={cal.quality} size={88} stroke={6} color={calColor}>
                 <div className="text-center">
-                  <div className="num text-xl font-black leading-none">{Math.round(cal.quality * 100)}</div>
-                  <div className="text-[9px] uppercase tracking-widest text-zinc-500">quality</div>
+                  <div className="num text-xl font-semibold leading-none text-zinc-100">{Math.round(cal.quality * 100)}</div>
+                  <div className="text-[10px] text-zinc-500">quality</div>
                 </div>
               </Ring>
               <div className="grid grid-cols-2 gap-2 flex-1">
@@ -228,13 +231,13 @@ export function Nose() {
               </div>
             </div>
             <div className="mt-4">
-              <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1.5">Baseline per step (clean air)</div>
+              <div className="label mb-1.5">Baseline per step (clean air)</div>
               {cal.baseline_ohm ? (
                 <div className="grid grid-cols-4 gap-2">
                   {cal.baseline_ohm.map((b, i) => (
-                    <div key={i} className="rounded-lg bg-ink-800 py-2 text-center">
+                    <div key={i} className="rounded-md bg-ink-800/60 py-2 text-center">
                       <div className="text-[10px] text-zinc-500 num">{HEATER_STEPS_C[i] ?? `step ${i + 1}`} °C</div>
-                      <div className="num text-base font-bold">{(b / 1000).toFixed(0)} kΩ</div>
+                      <div className="num text-sm text-zinc-200">{(b / 1000).toFixed(0)} kΩ</div>
                     </div>
                   ))}
                 </div>
@@ -250,7 +253,7 @@ export function Nose() {
         </div>
 
         <div className="grid grid-cols-[1.6fr_1fr] gap-4">
-          <Panel title="Trace · mean ratio" right={<span className="text-[10px] text-zinc-500 uppercase tracking-widest">last 180 s · anomaly shaded</span>}>
+          <Panel title="Trace · mean ratio" right={<span className="text-[11px] text-zinc-500">last 180 s · anomaly shaded</span>}>
             {trace.length < 2 ? (
               <Empty>No sensor samples yet. The trace fills at 1 Hz once a board or the replay is posting readings.</Empty>
             ) : (
@@ -259,31 +262,31 @@ export function Nose() {
                   <ComposedChart data={trace} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
                     <defs>
                       <linearGradient id="ratioFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#ff7a1a" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#ff7a1a" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#d9894f" stopOpacity={0.12} />
+                        <stop offset="100%" stopColor="#d9894f" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="#26262c" vertical={false} />
-                    <XAxis dataKey="t" tick={{ fill: "#a1a1aa", fontSize: 11 }} stroke="#36363e" tickFormatter={(t: number) => `${Math.round(t)}s`} />
-                    <YAxis domain={yDomain} tick={{ fill: "#a1a1aa", fontSize: 11 }} stroke="#36363e" width={36} tickFormatter={(v: number) => v.toFixed(1)} />
-                    <Tooltip contentStyle={{ background: "#1a1a1e", border: "1px solid #36363e", borderRadius: 8, fontSize: 12 }} labelFormatter={(t) => `t = ${Number(t).toFixed(0)}s`} formatter={(v: number) => [v.toFixed(3), "ratio"]} />
-                    <ReferenceLine y={1} stroke="#71717a" strokeDasharray="4 4" />
-                    {smell.status === "anomaly" && anomalyStart !== undefined && <ReferenceArea x1={anomalyStart} x2={trace[trace.length - 1].t} fill="#ff4d4d" fillOpacity={0.12} strokeOpacity={0} />}
+                    <XAxis dataKey="t" tick={{ fill: "#71717a", fontSize: 11 }} stroke="#26262c" tickFormatter={(t: number) => `${Math.round(t)}s`} />
+                    <YAxis domain={yDomain} tick={{ fill: "#71717a", fontSize: 11 }} stroke="#26262c" width={36} tickFormatter={(v: number) => v.toFixed(1)} />
+                    <Tooltip contentStyle={{ background: "#1a1a1e", border: "1px solid #26262c", borderRadius: 8, fontSize: 12 }} labelFormatter={(t) => `t = ${Number(t).toFixed(0)}s`} formatter={(v: number) => [v.toFixed(3), "ratio"]} />
+                    <ReferenceLine y={1} stroke="#52525b" strokeDasharray="4 4" />
+                    {smell.status === "anomaly" && anomalyStart !== undefined && <ReferenceArea x1={anomalyStart} x2={trace[trace.length - 1].t} fill="#e06c66" fillOpacity={0.08} strokeOpacity={0} />}
                     <Area type="monotone" dataKey="ratio" stroke="none" fill="url(#ratioFill)" isAnimationActive={false} tooltipType="none" />
-                    <Line type="monotone" dataKey="ratio" stroke="#ff7a1a" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="ratio" stroke="#d9894f" strokeWidth={1.5} dot={false} isAnimationActive={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             )}
           </Panel>
 
-          <Panel title="Simulator (no board today)" right={<span className="text-[10px] text-zinc-500 uppercase tracking-widest">POST /api/smell/scenario</span>}>
+          <Panel title="Simulator (no board today)" right={<span className="text-[11px] text-zinc-500">POST /api/smell/scenario</span>}>
             <div className="grid grid-cols-2 gap-2">
               {scenarioLabels.map((s) => {
                 const active = smell.scenario === s.name;
                 const danger = s.name === "stop";
                 return (
-                  <button key={s.name} className={`btn justify-center py-3 ${active ? "btn-accent" : danger ? "btn-danger" : ""}`} disabled={busy === s.name} onClick={() => run(s.name, () => api.smellScenario(s.name))}>
+                  <button key={s.name} className={`btn justify-center py-2 ${active ? "border-accent/40 text-zinc-100" : danger ? "text-zinc-400 hover:text-bad" : ""}`} disabled={busy === s.name} onClick={() => run(s.name, () => api.smellScenario(s.name))}>
                     {s.label}
                   </button>
                 );
@@ -302,10 +305,10 @@ export function Nose() {
               const note = st.note?.(smell) ?? null;
               return (
                 <li key={st.id} className="flex items-center gap-1.5 min-w-0 flex-1">
-                  <div className={`flex-1 min-w-0 rounded-lg border px-3 py-2 transition-colors ${live ? "border-ok/50 bg-ok/5" : replayHere ? "border-warn/50 bg-warn/5" : "border-ink-700 bg-ink-800/60"}`}>
+                  <div className={`flex-1 min-w-0 rounded-lg border px-3 py-2 transition-colors ${live ? "border-ink-700 bg-ink-800/60" : replayHere ? "border-warn/25 bg-ink-800/60" : "border-ink-800 bg-transparent"}`}>
                     <div className="flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${live ? "bg-ok shadow-[0_0_8px_#2fd673]" : replayHere ? "bg-warn shadow-[0_0_8px_#ffb020]" : "bg-ink-600"}`} />
-                      <span className="text-xs font-bold truncate">{st.title}</span>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${live ? "bg-ok" : replayHere ? "bg-warn" : "bg-ink-600"}`} />
+                      <span className="text-xs font-medium text-zinc-300 truncate">{st.title}</span>
                     </div>
                     <div className="text-[10px] text-zinc-500 truncate">{note ?? st.sub}</div>
                   </div>

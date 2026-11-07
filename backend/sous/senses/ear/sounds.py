@@ -20,7 +20,7 @@ CLIPS = [
     {"id": "ticket_printer", "name": "Ticket printer", "kind": "ticket_burst", "emoji": "🧾",
      "hint": "An order printed off the POS"},
     {"id": "fryer_alarm", "name": "Fryer alarm", "kind": "fryer_alarm", "emoji": "🍟",
-     "hint": "Fryer timer going off"},
+     "hint": "Fryer timer beeping"},
     {"id": "door_chime", "name": "Door chime", "kind": "door_chime", "emoji": "🔔",
      "hint": "Someone at the front door"},
     {"id": "phone_ring", "name": "Phone ringing", "kind": "phone_ring", "emoji": "📞",
@@ -44,7 +44,12 @@ def load_clip(cid: str) -> np.ndarray:
 
 
 def available() -> list[dict]:
-    return [dict(c, available=clip_path(c["id"]).exists(), url=f"/api/sounds/{c['id']}.wav") for c in CLIPS]
+    out = []
+    for c in CLIPS:
+        p = clip_path(c["id"])
+        v = int(p.stat().st_mtime) if p.exists() else 0     # cache-bust: phones keep old clips otherwise
+        out.append(dict(c, available=p.exists(), url=f"/api/sounds/{c['id']}.wav?v={v}"))
+    return out
 
 
 # A 75 s test sequence built from the real clips, used for the "Play soundtrack" button and tests.

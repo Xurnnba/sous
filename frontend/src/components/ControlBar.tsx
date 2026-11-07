@@ -49,7 +49,7 @@ export function ControlBar({ voice, audio, onChangeView, status }: { voice: Voic
   const providers = state?.providers;
 
   return (
-    <div className="flex items-center gap-2 px-5 py-2 border-b border-ink-700 bg-ink-950/80 shrink-0 flex-nowrap">
+    <div className="flex items-center gap-2 px-5 py-2 border-b border-ink-800 bg-ink-950 shrink-0 flex-nowrap">
       <button className={`btn ${listening ? "btn-on" : ""}`} onClick={() => (listening ? audio.stop() : void audio.startMic())} title={listening ? "Stop streaming this device's microphone" : "Stream this device's microphone to Sous (/ws/audio)"}>
         {listening ? <Mic size={16} /> : <MicOff size={16} />} {listening ? "Listening" : "Listen"}
         <span className="text-[11px] font-normal text-zinc-400 normal-case">· {audio.location}</span>
@@ -64,8 +64,8 @@ export function ControlBar({ voice, audio, onChangeView, status }: { voice: Voic
       )}
       {audio.error && <span className="text-[11px] text-bad max-w-[200px] truncate" title={audio.error}>{audio.error}</span>}
 
-      <button className={`btn ${rush ? "btn-accent animate-firePulse" : ""}`} onClick={() => run("rush", () => api.control({ rush: !rush }))} disabled={busy === "rush"}>
-        <Flame size={16} /> Rush {rush ? "ON" : "off"}
+      <button className={`btn ${rush ? "btn-accent" : ""}`} onClick={() => run("rush", () => api.control({ rush: !rush }))} disabled={busy === "rush"}>
+        <Flame size={16} /> Rush {rush ? "on" : "off"}
       </button>
       <button className={`btn ${voice.muted ? "btn-danger" : ""}`} onClick={() => voice.setMuted(!voice.muted)}>
         {voice.muted ? <VolumeX size={16} /> : <Volume2 size={16} />} {voice.muted ? "Muted" : "Mute"}
@@ -73,8 +73,8 @@ export function ControlBar({ voice, audio, onChangeView, status }: { voice: Voic
 
       {demo.running && (
         <>
-          <span className="pill bg-accent/15 text-accent-soft border border-accent/40 normal-case tracking-normal gap-1.5 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+          <span className="pill bg-ink-800 text-zinc-300 border border-ink-700 gap-1.5 whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent" />
             Scripted run · {demo.step}/{demo.total} · {demo.label}
           </span>
           <button className="btn btn-danger" onClick={demo.stop}>
@@ -83,7 +83,7 @@ export function ControlBar({ voice, audio, onChangeView, status }: { voice: Voic
         </>
       )}
       {audio.source === "soundtrack" && (
-        <span className="pill bg-ok/15 text-ok border border-ok/40 normal-case tracking-normal gap-1.5 whitespace-nowrap">
+        <span className="pill bg-ink-800 text-zinc-300 border border-ink-700 gap-1.5 whitespace-nowrap">
           <Music size={12} /> soundtrack {audio.position.toFixed(0)}s / {audio.duration.toFixed(0)}s
         </span>
       )}
@@ -121,7 +121,7 @@ export function ControlBar({ voice, audio, onChangeView, status }: { voice: Voic
                 <span className="text-xs text-zinc-400 pl-1">Sim speed</span>
                 <div className="inline-flex rounded-lg border border-ink-600 overflow-hidden">
                   {[1, 2, 4].map((s) => (
-                    <button key={s} className={`px-3 py-1.5 text-sm font-semibold ${speed === s ? "bg-accent/20 text-accent-soft" : "bg-ink-800 text-zinc-400 hover:text-zinc-100"}`} onClick={() => void run("speed", () => api.control({ speed: s }))}>
+                    <button key={s} className={`px-3 py-1.5 text-sm font-medium ${speed === s ? "bg-ink-700 text-zinc-100" : "bg-ink-800 text-zinc-400 hover:text-zinc-100"}`} onClick={() => void run("speed", () => api.control({ speed: s }))}>
                       {s}x
                     </button>
                   ))}
@@ -145,10 +145,10 @@ export function ControlBar({ voice, audio, onChangeView, status }: { voice: Voic
 
               {providers && (
                 <div className="flex flex-wrap gap-1.5 pt-2 border-t border-ink-700">
-                  <span className="pill bg-ink-800 text-zinc-300 border border-ink-600">LLM · {providers.llm}</span>
-                  <span className="pill bg-ink-800 text-zinc-300 border border-ink-600">TTS · {providers.tts}</span>
-                  <span className="pill bg-ink-800 text-zinc-300 border border-ink-600">Ears · {providers.ears}</span>
-                  <span className="pill bg-ink-800 text-zinc-300 border border-ink-600">Nose · {providers.nose}</span>
+                  <span className="pill bg-ink-800 text-zinc-400 border border-ink-700">LLM · {providers.llm}</span>
+                  <span className="pill bg-ink-800 text-zinc-400 border border-ink-700">TTS · {providers.tts}</span>
+                  <span className="pill bg-ink-800 text-zinc-400 border border-ink-700">Ears · {providers.ears}</span>
+                  <span className="pill bg-ink-800 text-zinc-400 border border-ink-700">Nose · {providers.nose}</span>
                 </div>
               )}
             </div>

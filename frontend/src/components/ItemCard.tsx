@@ -4,9 +4,9 @@ import { ago, HEATER_STEPS_C, pct, smellKindLabel, titleCase, urgencyMeta } from
 import type { Item, ItemSense } from "../types";
 
 const SENSE_CHIP: Record<ItemSense, { icon: typeof Ear; className: string; verb: string }> = {
-  hearing: { icon: Ear, className: "bg-sky-500/15 text-sky-300 border-sky-500/40", verb: "heard at" },
-  smell: { icon: Wind, className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40", verb: "smelled at" },
-  orders: { icon: Receipt, className: "bg-accent/15 text-accent-soft border-accent/40", verb: "orders" },
+  hearing: { icon: Ear, className: "border-ink-700 text-zinc-400", verb: "heard at" },
+  smell: { icon: Wind, className: "border-ink-700 text-zinc-400", verb: "smelled at" },
+  orders: { icon: Receipt, className: "border-ink-700 text-zinc-400", verb: "orders" },
 };
 
 const num = (v: unknown, digits = 0): string | null => (typeof v === "number" && Number.isFinite(v) ? v.toFixed(digits) : null);
@@ -24,7 +24,7 @@ function MiniFingerprint({ values }: { values: number[] }) {
         return (
           <div key={i} className="flex flex-col items-center gap-0.5 w-3">
             <div className="w-full flex items-end" style={{ height: 24 }}>
-              <div className={`w-full rounded-sm ${d >= 0 ? "bg-accent" : "bg-sky-400"}`} style={{ height: `${h}%` }} />
+              <div className={`w-full rounded-sm ${d >= 0 ? "bg-[#d9894f]" : "bg-[#7aa7c7]"}`} style={{ height: `${h}%` }} />
             </div>
             <span className="text-[8px] text-zinc-500 num leading-none">{HEATER_STEPS_C[i] ?? ""}</span>
           </div>
@@ -55,7 +55,7 @@ function Why({ item }: { item: Item }) {
           {probs.map(([k, v]) => (
             <div key={k} className="flex items-center gap-2">
               <span className="w-28 truncate text-zinc-300">{smellKindLabel[k] ?? titleCase(k)}</span>
-              <span className="num text-zinc-100 font-semibold">{pct(v)}</span>
+              <span className="num text-zinc-200 font-medium">{pct(v)}</span>
             </div>
           ))}
           {!probs.length && num(e.confidence, 2) && <div>confidence {num(e.confidence, 2)}</div>}
@@ -83,9 +83,9 @@ export function ItemCard({ item, now, onClose, compact = false }: { item: Item; 
   const loc = (typeof item.evidence?.location === "string" && item.evidence.location) || item.location || "kitchen";
   const where = item.sense === "orders" ? "orders" : `${chip.verb} ${loc}`;
   return (
-    <article className={`relative rounded-xl bg-ink-800 border border-ink-700 border-l-4 ${m.border} ${compact ? "p-3" : "p-4"} animate-slideIn`}>
+    <article className={`relative rounded-lg bg-ink-800 border border-ink-700 border-l-2 ${m.border} ${compact ? "p-3" : "p-4"} animate-slideIn`}>
       <div className="flex items-start justify-between gap-3">
-        <h3 className={`font-bold leading-snug ${compact ? "text-base" : "text-lg"}`}>{item.title}</h3>
+        <h3 className={`font-semibold text-zinc-100 leading-snug ${compact ? "text-sm" : "text-base"}`}>{item.title}</h3>
         <span className="num text-[11px] text-zinc-500 whitespace-nowrap shrink-0 mt-1">{ago(item.updated || item.created, now)}</span>
       </div>
       {!compact && item.detail && (
@@ -94,13 +94,13 @@ export function ItemCard({ item, now, onClose, compact = false }: { item: Item; 
         </p>
       )}
       <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
-        <span className={`pill border normal-case tracking-normal gap-1 ${chip.className}`}>
+        <span className={`pill border gap-1 font-normal ${chip.className}`}>
           <Icon size={11} /> {where}
         </span>
-        {item.count > 1 && <span className="pill bg-ink-700 text-zinc-200 num">×{item.count}</span>}
+        {item.count > 1 && <span className="pill bg-ink-700 text-zinc-300 num">×{item.count}</span>}
         {item.auto && (
-          <span className="pill border border-accent/40 bg-accent/10 text-accent-soft normal-case tracking-normal gap-1 max-w-full" title={item.auto.summary}>
-            <Sparkles size={11} /> <span className="truncate">Sous did: {item.auto.summary}</span>
+          <span className="pill gap-1 font-normal text-zinc-500 max-w-full px-0" title={item.auto.summary}>
+            <Sparkles size={11} className="shrink-0 text-accent/70" /> <span className="truncate">Sous did: {item.auto.summary}</span>
           </span>
         )}
         <button className="ml-auto inline-flex items-center gap-0.5 text-[11px] text-zinc-500 hover:text-zinc-200" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
@@ -109,10 +109,10 @@ export function ItemCard({ item, now, onClose, compact = false }: { item: Item; 
       </div>
       {open && <div className="mt-2 pt-2 border-t border-ink-700/70">{<Why item={item} />}</div>}
       <div className="flex gap-2 mt-3">
-        <button className="btn btn-on flex-1 justify-center py-1" onClick={() => onClose(item.id, "done")}>
-          <Check size={14} /> Done
+        <button className="btn flex-1 justify-center py-1 text-zinc-200" onClick={() => onClose(item.id, "done")}>
+          <Check size={14} className="text-ok" /> Done
         </button>
-        <button className="btn flex-1 justify-center py-1 text-zinc-300" onClick={() => onClose(item.id, "dismiss")}>
+        <button className="btn flex-1 justify-center py-1 text-zinc-400" onClick={() => onClose(item.id, "dismiss")}>
           <X size={14} /> Dismiss
         </button>
       </div>

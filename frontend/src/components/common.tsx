@@ -24,10 +24,10 @@ export function Empty({ children, className = "" }: { children: ReactNode; class
 export const senseIcon: Record<Sense, LucideIcon> = { hearing: Ear, smell: Wind, orders: Receipt, agent: Brain };
 
 export const senseTint: Record<Sense, string> = {
-  hearing: "text-sky-400 bg-sky-400/10",
-  smell: "text-emerald-400 bg-emerald-400/10",
-  orders: "text-accent-soft bg-accent/10",
-  agent: "text-fuchsia-400 bg-fuchsia-400/10",
+  hearing: "text-sky-300/80 bg-sky-400/5",
+  smell: "text-emerald-300/80 bg-emerald-400/5",
+  orders: "text-accent-soft/80 bg-accent/5",
+  agent: "text-violet-300/80 bg-violet-400/5",
 };
 
 export const severityTint: Record<Severity, string> = { info: "text-zinc-400", warn: "text-warn", alert: "text-bad" };
@@ -68,28 +68,28 @@ export function UrgencyPill({ urgency, className = "" }: { urgency: Urgency | "i
 /** Small key/value stat used across the sense pages. */
 export function Stat({ label, value, sub, className = "" }: { label: string; value: ReactNode; sub?: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-lg bg-ink-800 px-3 py-2 ${className}`}>
-      <div className="text-[10px] uppercase tracking-widest text-zinc-500">{label}</div>
-      <div className="num text-lg font-bold leading-tight">{value}</div>
+    <div className={`rounded-md bg-ink-800/60 px-3 py-2 ${className}`}>
+      <div className="label">{label}</div>
+      <div className="num text-base font-medium leading-tight text-zinc-200">{value}</div>
       {sub && <div className="text-[11px] text-zinc-400 mt-0.5">{sub}</div>}
     </div>
   );
 }
 
 /** Horizontal labelled bar (0..1 score). */
-export function ScoreBar({ label, value, color = "bg-sky-400", highlight = false, format = (v: number) => v.toFixed(2) }: { label: string; value: number; color?: string; highlight?: boolean; format?: (v: number) => string }) {
+export function ScoreBar({ label, value, color = "bg-sky-400/70", highlight = false, format = (v: number) => v.toFixed(2) }: { label: string; value: number; color?: string; highlight?: boolean; format?: (v: number) => string }) {
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className={`w-24 truncate ${highlight ? "text-zinc-100 font-bold" : "text-zinc-400"}`} title={label}>
+      <span className={`w-24 truncate ${highlight ? "text-zinc-100 font-medium" : "text-zinc-500"}`} title={label}>
         {label}
       </span>
       <Bar value={value} max={1} className="flex-1" color={color} height="h-1.5" />
-      <span className={`num w-10 text-right ${highlight ? "text-zinc-100 font-bold" : "text-zinc-500"}`}>{format(value)}</span>
+      <span className={`num w-10 text-right ${highlight ? "text-zinc-100 font-medium" : "text-zinc-500"}`}>{format(value)}</span>
     </div>
   );
 }
 
-export function Ring({ value, size = 56, stroke = 6, color = "#2fd673", children }: { value: number; size?: number; stroke?: number; color?: string; children?: ReactNode }) {
+export function Ring({ value, size = 56, stroke = 6, color = "#5fb58a", children }: { value: number; size?: number; stroke?: number; color?: string; children?: ReactNode }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const v = Math.max(0, Math.min(1, value));

@@ -53,23 +53,29 @@ CFG = {
     "knn_k": 3,              # neighbours in the vote
     "few_thr": 0.74,         # nearest-neighbour similarity needed for a taught label
     "few_margin": 0.03,      # vote margin over background / other labels
-    "confirm": {},           # consecutive hops required per kind; merging already handles duplicates
+    "confirm": {"fryer_alarm": 2, "phone_ring": 2},   # hops within 2 s before a long tonal sound fires: the
+                             # first window of a phone ring can resemble a taught timer beep, and vice versa
     "aug_snr_db": (15.0, 8.0),
     "teach_min_db_above_floor": 10.0,     # only learn windows clearly louder than the room
     "zs_confirm": {"fryer_alarm": 2, "phone_ring": 2},   # zero-shot needs 2 hops for long tonal sounds
     "gain_cap_skip": 40.0,                # a window needing this much gain is a transient in silence: skip
     "zero_shot": True,
+    "zs_ambiguity": 0.5,                  # zero-shot stays quiet if the runner-up event is within this ratio
 }
 
 ZERO_SHOT = {
-    "fryer_alarm": {"Alarm": 1.0, "Beep, bleep": 1.0, "Buzzer": 0.8, "Smoke detector, smoke alarm": 1.0,
-                    "Microwave oven": 0.5, "Alarm clock": 0.8, "Fire alarm": 1.0, "Whistle": 0.6, "Whistling": 0.5},
+    # Timer beeps only. Generic "Alarm" is weak (YAMNet also gives it to ringing phones, which made phones
+    # read as fryer alarms) and fire/smoke alarms are deliberately excluded: they are not a fryer timer.
+    # Reverb makes timer beeps read as "Telephone dialing, DTMF"; a ringing phone never does.
+    "fryer_alarm": {"Beep, bleep": 1.0, "Telephone dialing, DTMF": 0.6, "Sidetone": 0.5, "Buzzer": 0.8,
+                    "Microwave oven": 0.8, "Alarm clock": 0.6, "Alarm": 0.3},
     "door_chime": {"Doorbell": 1.0, "Ding": 0.9, "Ding-dong": 1.0, "Chime": 0.9, "Bell": 0.6,
                    "Wind chime": 0.5, "Bicycle bell": 0.6},
     "ticket_burst": {"Printer": 1.0, "Typewriter": 0.5, "Typing": 0.3, "Tools": 0.4, "Power tool": 0.3},
     "clatter": {"Dishes, pots, and pans": 1.0, "Glass": 0.8, "Cutlery, silverware": 0.8, "Shatter": 1.0,
                 "Breaking": 0.8, "Bang": 0.5, "Slam": 0.5},
-    "phone_ring": {"Telephone bell ringing": 1.0, "Ringtone": 1.0, "Telephone": 0.7},
+    # Through a room the demo phone ring is heard mostly as "Whistling" (it used to fall to the fryer).
+    "phone_ring": {"Telephone bell ringing": 1.0, "Ringtone": 1.0, "Telephone": 0.7, "Whistling": 0.6},
     "speech": {"Speech": 1.0, "Conversation": 1.0, "Shout": 0.8, "Yell": 0.8},
     "frying": {"Sizzle": 1.0, "Frying (food)": 1.0},
 }
@@ -286,9 +292,16 @@ class EarClassifier:
             winner = max(votes, key=votes.get)
             runner = max([v for k, v in votes.items() if k != winner], default=0.0)
             top_sim = max((s for s, l in nb if l == winner), default=0.0)
+            strong = [k for k in EVENT_LABELS if zs.get(k, 0.0) >= ZERO_SHOT_THRESHOLD[k] + 0.15]
+            strong_zs = bool(strong)
             if winner != BACKGROUND and top_sim >= CFG["few_thr"] and votes[winner] - runner >= CFG["few_margin"]:
-                return winner, "taught", top_sim
-            strong_zs = any(zs.get(k, 0.0) >= ZERO_SHOT_THRESHOLD[k] + 0.15 for k in EVENT_LABELS)
+                # Two electronic tones (fryer timer vs phone) can sit close in embedding space. If the AudioSet
+                # prior clearly hears a *different* event and barely hears this one, stay quiet for this window.
+                contradicted = (winner in ZERO_SHOT and zs.get(winner, 0.0) < ZERO_SHOT_THRESHOLD[winner]
+                                and any(k != winner for k in strong))
+                if not contradicted:
+                    return winner, "taught", top_sim
+                return None, "", 0.0
             if winner == BACKGROUND and top_sim >= CFG["few_thr"] and not strong_zs:
                 return None, "", 0.0            # confidently just the room (unless the prior shouts otherwise)
             if winner in taught and top_sim >= CFG["few_thr"] - 0.08:
@@ -296,8 +309,10 @@ class EarClassifier:
         if CFG["zero_shot"]:
             best = max(zs, key=zs.get)
             dominant = self.last_top[0][0]
+            runner_up = max((v for k, v in zs.items() if k in EVENT_LABELS and k != best), default=0.0)
             if (best in EVENT_LABELS and zs[best] >= ZERO_SHOT_THRESHOLD[best]
-                    and dominant in ZERO_SHOT.get(best, {})):
+                    and dominant in ZERO_SHOT.get(best, {})
+                    and runner_up <= CFG["zs_ambiguity"] * zs[best]):   # two kinds nearly tied: don't guess
                 return best, "zero-shot", min(1.0, zs[best] / 0.6)
         return None, "", 0.0
 

@@ -97,8 +97,8 @@ export function Sounds() {
       <audio ref={audioRef} preload="auto" />
       <header className="flex items-end justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.3em] text-accent font-black">SOUS</div>
-          <h1 className="text-2xl font-black leading-tight">Sous sound board</h1>
+          <div className="label">Sous</div>
+          <h1 className="text-xl font-semibold leading-tight">Sous sound board</h1>
         </div>
         <a href="#/board" className="text-xs text-zinc-500 hover:text-zinc-200 pb-1 whitespace-nowrap shrink-0">
           board →
@@ -106,38 +106,38 @@ export function Sounds() {
       </header>
 
       {clips === null && <div className="text-zinc-500 text-center py-10">Loading clips…</div>}
-      {clips && clips.length === 0 && <div className="rounded-2xl border border-ink-700 bg-ink-900 p-6 text-center text-zinc-400">No clips served at /api/sounds yet.</div>}
+      {clips && clips.length === 0 && <div className="rounded-lg border border-ink-800 bg-ink-900 p-6 text-center text-zinc-400">No clips served at /api/sounds yet.</div>}
 
       <div className="flex flex-col gap-3">
         {clips?.map((c) => {
           const fb = feedback[c.id];
-          const tone = fb?.status === "heard" ? "border-ok bg-ok/20 shadow-[0_0_24px_rgba(47,214,115,0.35)]" : fb?.status === "waiting" ? "border-accent/60 bg-accent/10" : "border-ink-600 bg-ink-800";
+          const tone = fb?.status === "heard" ? "border-ok/25 bg-ok/10" : fb?.status === "waiting" ? "border-accent/25 bg-accent/5" : "border-ink-700 bg-ink-800";
           return (
-            <button key={c.id} className={`w-full rounded-2xl border-2 px-5 py-5 text-left transition-all active:scale-[0.98] disabled:opacity-40 ${tone}`} onClick={() => play(c)} disabled={!c.available}>
+            <button key={c.id} className={`w-full rounded-lg border px-5 py-5 text-left transition-colors active:scale-[0.98] disabled:opacity-40 ${tone}`} onClick={() => play(c)} disabled={!c.available}>
               <div className="flex items-center gap-4">
-                <span className="text-5xl leading-none select-none" role="img" aria-label={c.name}>
+                <span className="text-4xl leading-none select-none" role="img" aria-label={c.name}>
                   {c.emoji}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-2xl font-black leading-tight">{c.name}</div>
+                  <div className="text-lg font-medium leading-tight text-zinc-100">{c.name}</div>
                   <div className="text-sm text-zinc-400 leading-snug">{c.hint}</div>
                 </div>
               </div>
-              <div className={`mt-3 text-sm font-semibold min-h-[20px] ${fb?.status === "heard" ? "text-ok" : fb?.status === "missed" ? "text-zinc-500" : fb?.status === "waiting" ? "text-accent-soft animate-pulse" : "text-zinc-600 font-normal"}`}>{fb?.text ?? "tap to play"}</div>
+              <div className={`mt-3 text-sm font-medium min-h-[20px] ${fb?.status === "heard" ? "text-ok" : fb?.status === "missed" ? "text-zinc-500" : fb?.status === "waiting" ? "text-zinc-400" : "text-zinc-600 font-normal"}`}>{fb?.text ?? "tap to play"}</div>
             </button>
           );
         })}
       </div>
 
       {clips && clips.length > 0 && (
-        <button className={`w-full rounded-2xl border-2 px-5 py-4 flex items-center justify-center gap-3 text-xl font-black ${sequence ? "border-bad/60 bg-bad/15 text-bad" : "border-accent/60 bg-accent/15 text-accent-soft"}`} onClick={sequence ? stopSequence : playSequence}>
+        <button className={`w-full rounded-lg border px-5 py-4 flex items-center justify-center gap-3 text-base font-medium ${sequence ? "border-bad/25 bg-bad/10 text-bad" : "border-ink-700 bg-ink-800 text-zinc-200"}`} onClick={sequence ? stopSequence : playSequence}>
           {sequence ? (
             <>
-              <Square size={22} /> Stop · {sequence.step}/{sequence.total}
+              <Square size={18} /> Stop · {sequence.step}/{sequence.total}
             </>
           ) : (
             <>
-              <Shuffle size={22} /> Play random sequence
+              <Shuffle size={18} /> Play random sequence
             </>
           )}
         </button>
@@ -145,7 +145,7 @@ export function Sounds() {
 
       <footer className="text-center text-xs text-zinc-500 pt-2 pb-6">
         Open this page on your phone; the laptop is listening.
-        {mock && <div className="mt-1 text-fuchsia-300/80">Mock mode — clips are not served and nothing is listening.</div>}
+        {mock && <div className="mt-1 text-warn">Mock mode — clips are not served and nothing is listening.</div>}
       </footer>
     </div>
   );

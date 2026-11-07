@@ -26,12 +26,12 @@ function Desktop({ view, onChangeView }: { view: View; onChangeView: (v: View) =
       <TopNav view={view} onChange={onChangeView} />
       <ControlBar voice={voice} audio={audio} onChangeView={onChangeView} status={status} />
       {mock && (
-        <div className="shrink-0 text-center text-[11px] py-1 bg-fuchsia-500/10 text-fuchsia-300 border-b border-fuchsia-500/20">
+        <div className="shrink-0 text-center text-[11px] py-1 bg-ink-900 text-zinc-400 border-b border-ink-800">
           Mock mode — an in-browser simulator is standing in for the backend. Remove <code>?mock=1</code> to connect to FastAPI on :8000.
         </div>
       )}
       {!mock && status !== "open" && (
-        <div className="shrink-0 text-center text-[11px] py-1 bg-warn/10 text-warn border-b border-warn/20">
+        <div className="shrink-0 text-center text-[11px] py-1 bg-ink-900 text-warn border-b border-ink-800">
           {status === "connecting" ? "Connecting to the backend on /ws…" : "Backend unreachable — retrying with backoff. Append ?mock=1 to the URL to demo without it."}
         </div>
       )}

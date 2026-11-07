@@ -18,27 +18,27 @@ export function SoundtrackTimeline({ truth, position, duration, detections, star
     : [];
   return (
     <div className="space-y-1">
-      <div className="flex justify-between text-[10px] uppercase tracking-widest text-zinc-500">
+      <div className="flex justify-between text-[11px] text-zinc-500">
         <span>Ground truth</span>
         <span className="num">{finished ? `done · ${total.toFixed(0)} s` : `${position.toFixed(1)}s / ${total.toFixed(0)}s`}</span>
       </div>
-      <div className="relative h-3 rounded bg-ink-700">
+      <div className="relative h-2.5 rounded bg-ink-800">
         {truth?.events.map((e, i) => (
-          <span key={i} title={`${e.label ?? e.kind}${e.clip ? ` (${e.clip})` : ""} @ ${e.t}s`} className={`absolute top-0 h-full w-1 rounded ${kindColor[e.kind] ?? "bg-zinc-300"}`} style={{ left: pct(e.t) }} />
+          <span key={i} title={`${e.label ?? e.kind}${e.clip ? ` (${e.clip})` : ""} @ ${e.t}s`} className={`absolute top-0 h-full w-1 rounded ${kindColor[e.kind] ?? "bg-zinc-500"}`} style={{ left: pct(e.t) }} />
         ))}
-        {showCursor && <span className="absolute top-[-2px] h-[calc(100%+4px)] w-0.5 bg-zinc-100" style={{ left: pct(cursor) }} />}
+        {showCursor && <span className="absolute top-[-2px] h-[calc(100%+4px)] w-0.5 bg-zinc-300" style={{ left: pct(cursor) }} />}
       </div>
-      <div className="text-[10px] uppercase tracking-widest text-zinc-500">Detected</div>
-      <div className="relative h-3 rounded bg-ink-700">
+      <div className="text-[11px] text-zinc-500">Detected</div>
+      <div className="relative h-2.5 rounded bg-ink-800">
         {detected.map((e, i) => (
-          <span key={i} title={`${e.kind} @ ${e.t.toFixed(1)}s`} className={`absolute top-0 h-full w-1 rounded ${kindColor[e.kind] ?? "bg-zinc-300"}`} style={{ left: pct(e.t) }} />
+          <span key={i} title={`${e.kind} @ ${e.t.toFixed(1)}s`} className={`absolute top-0 h-full w-1 rounded ${kindColor[e.kind] ?? "bg-zinc-500"}`} style={{ left: pct(e.t) }} />
         ))}
-        {showCursor && <span className="absolute top-[-2px] h-[calc(100%+4px)] w-0.5 bg-zinc-100" style={{ left: pct(cursor) }} />}
+        {showCursor && <span className="absolute top-[-2px] h-[calc(100%+4px)] w-0.5 bg-zinc-300" style={{ left: pct(cursor) }} />}
       </div>
       <div className="flex flex-wrap gap-3 pt-1">
         {LEGEND.map((k) => (
-          <span key={k} className="inline-flex items-center gap-1 text-[10px] text-zinc-400">
-            <span className={`w-2 h-2 rounded-sm ${kindColor[k]}`} /> {k.replace("_", " ")}
+          <span key={k} className="inline-flex items-center gap-1 text-[11px] text-zinc-500">
+            <span className={`w-1.5 h-1.5 rounded-full ${kindColor[k]}`} /> {k.replace("_", " ")}
           </span>
         ))}
       </div>

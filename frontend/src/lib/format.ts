@@ -46,10 +46,10 @@ export const pct = (v: number | null | undefined, digits = 0): string => (typeof
 export const titleCase = (s: string): string => s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
 export const channelMeta: Record<Channel, { label: string; className: string }> = {
-  doordash: { label: "DoorDash", className: "bg-doordash text-white" },
-  ubereats: { label: "Uber Eats", className: "bg-ubereats text-black" },
-  phone: { label: "Phone", className: "bg-sky-500 text-black" },
-  walkin: { label: "Walk-in", className: "bg-zinc-300 text-black" },
+  doordash: { label: "DoorDash", className: "bg-doordash/10 text-doordash" },
+  ubereats: { label: "Uber Eats", className: "bg-ubereats/10 text-ubereats" },
+  phone: { label: "Phone", className: "bg-sky-400/10 text-sky-300" },
+  walkin: { label: "Walk-in", className: "bg-zinc-500/15 text-zinc-300" },
 };
 
 export const riskColor: Record<LateRisk, string> = { low: "text-ok", med: "text-warn", high: "text-bad" };
@@ -65,19 +65,19 @@ export function minutesToStockoutColor(m: number | null): string {
 }
 
 export const freshnessClass: Record<string, string> = {
-  fresh: "bg-ok/15 text-ok border-ok/40",
-  watch: "bg-warn/15 text-warn border-warn/40",
-  turning: "bg-accent/15 text-accent-soft border-accent/40",
-  spoiled: "bg-bad/15 text-bad border-bad/40",
+  fresh: "bg-ok/10 text-ok border-ok/25",
+  watch: "bg-warn/10 text-warn border-warn/25",
+  turning: "bg-accent/10 text-accent-soft border-accent/25",
+  spoiled: "bg-bad/10 text-bad border-bad/25",
 };
 
 export const URGENCIES: Urgency[] = ["now", "next", "today", "later"];
 
 export const urgencyMeta: Record<Urgency, { label: string; border: string; text: string; bg: string; dot: string; empty: string }> = {
-  now: { label: "Now", border: "border-l-bad", text: "text-bad", bg: "bg-bad/15", dot: "bg-bad", empty: "Nothing right now" },
-  next: { label: "Next", border: "border-l-warn", text: "text-warn", bg: "bg-warn/15", dot: "bg-warn", empty: "Nothing queued" },
-  today: { label: "Today", border: "border-l-ok", text: "text-ok", bg: "bg-ok/15", dot: "bg-ok", empty: "Nothing for today" },
-  later: { label: "Later", border: "border-l-zinc-500", text: "text-zinc-400", bg: "bg-zinc-500/15", dot: "bg-zinc-500", empty: "Nothing later" },
+  now: { label: "Now", border: "border-l-bad", text: "text-bad", bg: "bg-bad/10", dot: "bg-bad", empty: "Nothing right now" },
+  next: { label: "Next", border: "border-l-warn", text: "text-warn", bg: "bg-warn/10", dot: "bg-warn", empty: "Nothing queued" },
+  today: { label: "Today", border: "border-l-ok", text: "text-ok", bg: "bg-ok/10", dot: "bg-ok", empty: "Nothing for today" },
+  later: { label: "Later", border: "border-l-zinc-500", text: "text-zinc-400", bg: "bg-zinc-500/10", dot: "bg-zinc-500", empty: "Nothing later" },
 };
 
 export const scenarioLabels: { name: SmellScenario; label: string }[] = [
@@ -103,14 +103,14 @@ export const INJECT_KINDS: { kind: HearingInjectKind; label: string }[] = [
 export const EVENT_SCORE_KEYS = ["fryer_alarm", "door_chime", "ticket_burst", "clatter", "phone_ring"] as const;
 
 export const kindColor: Record<string, string> = {
-  door_chime: "bg-sky-400",
+  door_chime: "bg-sky-300/70",
   ticket_burst: "bg-accent",
   fryer_alarm: "bg-bad",
   clatter: "bg-warn",
   noise_spike: "bg-warn",
-  phone_ring: "bg-emerald-400",
-  speech: "bg-fuchsia-400",
-  taught: "bg-violet-400",
+  phone_ring: "bg-emerald-300/70",
+  speech: "bg-zinc-400",
+  taught: "bg-violet-300/70",
 };
 
 /** Human label for smell classes / scenario kinds. */

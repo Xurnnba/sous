@@ -34,7 +34,7 @@ export function Board({ voice, listening }: { voice: VoiceState; listening: bool
           <SensePills state={state} listening={listening} />
         </div>
 
-        {/* Columns scroll internally so the Later row and SOUS SAYS stay on the single screen. */}
+        {/* Columns scroll internally so the Later row and Sous says stay on the single screen. */}
         <div className="grid grid-cols-3 gap-4 flex-1 min-h-0">
           {COLUMNS.map((u) => {
             const m = urgencyMeta[u];
@@ -42,11 +42,11 @@ export function Board({ voice, listening }: { voice: VoiceState; listening: bool
             return (
               <section key={u} className="panel p-3 flex flex-col min-h-0">
                 <header className="flex items-baseline justify-between px-1 mb-2 shrink-0">
-                  <h2 className={`text-sm font-black uppercase tracking-[0.2em] ${m.text}`}>
-                    <span className={`inline-block w-2 h-2 rounded-full mr-2 ${m.dot}`} />
+                  <h2 className="text-sm font-medium text-zinc-300 inline-flex items-center">
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full mr-2 ${m.dot}`} />
                     {m.label}
                   </h2>
-                  <span className="num text-2xl font-black text-zinc-500">{list.length}</span>
+                  <span className="num text-sm text-zinc-500">{list.length}</span>
                 </header>
                 <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
                   {list.length === 0 ? <Empty>{m.empty}</Empty> : list.map((it) => <ItemCard key={it.id} item={it} now={now} onClose={closeItem} />)}
@@ -58,8 +58,8 @@ export function Board({ voice, listening }: { voice: VoiceState; listening: bool
 
         <section className="panel p-3 shrink-0 max-h-[30%] overflow-y-auto">
           <button className="w-full flex items-center justify-between px-1 text-left" onClick={() => setLaterOpen((o) => !o)} aria-expanded={laterOpen}>
-            <span className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
-              <span className="inline-block w-2 h-2 rounded-full mr-2 bg-zinc-500" />
+            <span className="text-sm font-medium text-zinc-400 inline-flex items-center">
+              <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 bg-zinc-600" />
               Later · <span className="num">{later.length}</span>
             </span>
             <span className="inline-flex items-center gap-2 text-xs text-zinc-500">

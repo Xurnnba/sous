@@ -3,16 +3,16 @@ import { pct, smellKindLabel } from "../lib/format";
 import type { State } from "../types";
 
 type Tone = "ok" | "warn" | "bad" | "muted";
-const toneCls: Record<Tone, string> = { ok: "border-ok/40 text-ok", warn: "border-warn/50 text-warn", bad: "border-bad/50 text-bad", muted: "border-ink-600 text-zinc-500" };
+const toneCls: Record<Tone, string> = { ok: "border-ink-800 text-ok", warn: "border-warn/25 text-warn", bad: "border-bad/25 text-bad", muted: "border-ink-800 text-zinc-500" };
 
 function Pill({ icon: Icon, name, tone, main, sub, href }: { icon: typeof Ear; name: string; tone: Tone; main: string; sub?: string; href: string }) {
   return (
-    <a href={href} className={`flex items-center gap-3 rounded-xl border bg-ink-900 px-4 py-2.5 min-w-0 hover:bg-ink-800 transition-colors ${toneCls[tone]}`}>
-      <Icon size={22} className="shrink-0" />
+    <a href={href} className={`flex items-center gap-3 rounded-lg border bg-ink-900 px-3 py-2 min-w-0 hover:bg-ink-800 transition-colors ${toneCls[tone]}`}>
+      <Icon size={16} className="shrink-0" />
       <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-[0.25em] text-zinc-500 leading-none">{name}</div>
-        <div className="text-base font-bold leading-tight truncate text-zinc-100">{main}</div>
-        {sub && <div className="text-[11px] text-zinc-400 truncate leading-tight">{sub}</div>}
+        <div className="label leading-none">{name}</div>
+        <div className="text-sm font-medium leading-tight truncate text-zinc-100 mt-0.5">{main}</div>
+        {sub && <div className="text-[11px] text-zinc-500 truncate leading-tight">{sub}</div>}
       </div>
     </a>
   );

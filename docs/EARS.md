@@ -55,17 +55,18 @@ mic (laptop / phone / USB)  ──►  browser: AudioWorklet, resample to 16 kHz
 
 ## Measured performance
 
-Test material: five realistic sound effects (receipt printer, fryer alarm, door chime, phone,
-plates crash; generated with ElevenLabs text-to-sound, 16 kHz) placed in a 78-second kitchen
+Test material: five sound effects (receipt printer, door chime, phone and plates crash generated with
+ElevenLabs text-to-sound; the fryer timer is a soft 880 Hz beep rendered by `tools/make_fryer_timer.py`,
+16 kHz) placed in a 78-second kitchen
 room-tone track at known times, then degraded as a room would: distance attenuation, synthetic
 reverb, added noise. `backend/tests/eval_ear.py` reproduces every number here.
 
 | Scenario | Recall | False positives |
 |---|---|---|
 | Zero-shot, clean | 10/10 | 0 |
-| Zero-shot, 4 m across the room (-18 dB, RT60 0.3 s, noise -46 dBFS) | 8/10 | 1 |
-| Few-shot taught through that room, tested later in the same room | 8/10 | 1 |
-| Few-shot, farther and noisier than taught (-26 dB, noise -42 dBFS) | 3/10 | 0 |
+| Zero-shot, 4 m across the room (-18 dB, RT60 0.3 s, noise -46 dBFS) | 9/10 | 0 |
+| Few-shot taught through that room, tested later in the same room | 9/10 | 1 |
+| Few-shot, farther and noisier than taught (-26 dB, noise -42 dBFS) | 3/10 | 1 |
 | Few-shot, whisper-level (-32 dB peak, 10 dB above the noise) | 0/10 | 0 |
 
 Through the live server (`tests/e2e_backend.py`, soundtrack streamed as a microphone at 3× speed):
@@ -78,6 +79,20 @@ across a room with no false alarms. Teaching in place adds the printer and the c
 about 4 m in a loud room a second mic is the right fix, which is why mics are cheap and plural
 in this design. We tuned on exactly these scenarios (`tests/sweep_ear.py`), so treat the numbers
 as an upper bound for this material and a lower bound on what a mic placed near the source does.
+
+**Fryer timer vs phone.** The first fryer clip was shrill, and YAMNet heard it as whistle / alarm /
+fire alarm, while it heard a ringing phone as "Alarm" too. As a result phones were reported as fryer
+alarms (10 of 12 simulated rooms, zero-shot) and the two were mixed up on the taught path. The fix had
+four parts:
+* The fryer clip is now a mellow oven-timer beep that YAMNet hears as "Beep, bleep".
+* The fryer zero-shot map holds only timer cues: weak generic "Alarm", no fire or smoke alarm.
+* Zero-shot stays quiet when two event kinds nearly tie.
+* Fryer and phone need two matching windows within 2 s, and a taught match is held back when the
+  prior clearly hears another event.
+
+Playing each clip alone, twice, in 12 rooms (-6 to -24 dB, RT60 0.2–0.5 s) gives zero fryer↔phone
+confusions on either path. One residual: in long-reverb rooms the beep is sometimes heard as a chime
+(3 of 12 rooms, zero-shot).
 
 ## Why not a bigger model, or speech recognition
 
