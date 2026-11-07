@@ -57,7 +57,7 @@ export const httpApi: SousApi = {
   earForget: (label) => request("DELETE", `/api/ear/prototypes/${encodeURIComponent(label)}`).then(() => undefined),
   hearingInject: (kind, location) => postJson("/api/hearing/inject", location ? { kind, location } : { kind }).then(() => undefined),
   sounds: () => fetch("/api/sounds").then((r) => (r.ok ? r.json() : { clips: [] })),
-  hosts: () => fetch("/api/hosts").then((r) => (r.ok ? r.json() : { port: 0, hosts: [] })),
+  hosts: () => fetch("/api/hosts").then((r) => (r.ok ? r.json() : { port: 0, hosts: [], proxy: null })),
   speak: async (text) => {
     const res = await postJson("/api/speak", { text });
     if (res.status === 204) return null;

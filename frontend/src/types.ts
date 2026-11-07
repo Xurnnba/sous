@@ -287,7 +287,12 @@ export type SensorReadingBody = {
 
 export type SoundClip = { id: string; name: string; kind: string; emoji: string; hint: string; available: boolean; url: string };
 
-export type HostsResponse = { port: number; hosts: { ip: string; url: string }[] };
+export type HostsResponse = {
+  port: number;
+  hosts: { ip: string; url: string }[];
+  /** exe.dev HTTPS proxy URL; default_port=true means it is the one port exe.dev can make public. */
+  proxy?: { url: string; vm: string; default_port: boolean } | null;
+};
 
 export type SoundtrackTruth = {
   duration_s?: number;

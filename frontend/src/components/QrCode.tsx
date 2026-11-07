@@ -6,7 +6,7 @@ export function QrCode({ text, size = 140, className = "" }: { text: string; siz
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    QR.toDataURL(text, { margin: 1, width: size, color: { dark: "#d4d4d8", light: "#121214" }, errorCorrectionLevel: "M" })
+    QR.toDataURL(text, { margin: 2, width: size, color: { dark: "#121214", light: "#e4e4e7" }, errorCorrectionLevel: "M" }) // dark on light: inverted codes fail on some phone cameras
       .then((url) => alive && setSrc(url))
       .catch(() => alive && setSrc(null));
     return () => {

@@ -253,7 +253,39 @@ async def hosts(request: Request) -> dict:
             ips.insert(0, ip)
     except Exception:
         pass
-    return {"port": port, "hosts": [{"ip": ip, "url": f"http://{ip}:{port}/#/sounds"} for ip in ips]}
+    return {"port": port, "hosts": [{"ip": ip, "url": f"http://{ip}:{port}/#/sounds"} for ip in ips],
+            "proxy": await _proxy_url(request, port)}
+
+
+_reflection: dict = {}
+
+
+async def _proxy_url(request: Request, port: int) -> Optional[dict]:
+    """The exe.dev HTTPS proxy URL phones should use (https://exe.dev/docs/proxy.md).
+
+    The VM's name and default proxy port come from the documented Reflection endpoint
+    (https://exe.dev/docs/integrations-reflection.md). The default port is the only one exe.dev can
+    make public, at https://<name>.exe.xyz/ with no port; any other port is reachable only by people
+    with access to the VM. Without Reflection, fall back to the X-Forwarded-Host the proxy sent."""
+    if "name" not in _reflection:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=2.0) as c:
+                idx = (await c.get("https://reflection.int.exe.xyz/")).json()
+                dp = (await c.get("https://reflection.int.exe.xyz/default_port")).json()
+            _reflection.update(name=idx.get("name"), default_port=dp.get("default_port"))
+        except Exception:
+            _reflection.update(name=None, default_port=None)
+    name, default_port = _reflection.get("name"), _reflection.get("default_port")
+    if name:
+        if default_port == port:
+            return {"url": f"https://{name}.exe.xyz/", "vm": name, "default_port": True}
+        return {"url": f"https://{name}.exe.xyz:{port}/", "vm": name, "default_port": False}
+    fwd = request.headers.get("x-forwarded-host")
+    if fwd and fwd.split(":")[0].endswith(".exe.xyz"):
+        host = fwd.split(":")[0]
+        return {"url": f"https://{fwd}/", "vm": host.split(".")[0], "default_port": ":" not in fwd}
+    return None
 
 
 @app.get("/api/state")

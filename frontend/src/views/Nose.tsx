@@ -309,7 +309,7 @@ export function Nose() {
             </div>
             <p className="text-xs text-zinc-400 mt-3">Scan to open the kitchen floor plan. Drag spoiled or fresh scent sources near the virtual noses and watch them classify the air and update inventory.</p>
             <p className="text-[11px] text-zinc-500 mt-1.5">
-              {roomUrl.source === "lan" ? `This laptop's network address${roomUrl.ip ? ` (${roomUrl.ip})` : ""}` : roomUrl.source === "pending" ? "Looking up this laptop's LAN address…" : roomUrl.loopback ? "This page is on localhost and no network address was found, so a phone can't reach it." : "Using this page's own address."}
+              {roomUrl.note}
             </p>
           </Panel>
         </div>

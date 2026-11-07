@@ -288,7 +288,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
               <div className="text-sm text-zinc-400">
                 <p>Scan to open the sound board. Tap a clip on the phone; this laptop listens and the board lights up when Sous hears it.</p>
                 <p className="text-[11px] text-zinc-500 mt-1.5">
-                  {boardUrl.source === "lan" ? `This laptop's network address${boardUrl.ip ? ` (${boardUrl.ip})` : ""}` : boardUrl.source === "pending" ? "Looking up this laptop's LAN address…" : boardUrl.loopback ? "This page is on localhost and no network address was found, so a phone can't reach it." : "Using this page's own address."}
+                  {boardUrl.note}
                 </p>
               </div>
             </div>
