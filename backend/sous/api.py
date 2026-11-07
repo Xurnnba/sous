@@ -51,10 +51,12 @@ class Hub:
     def _send_all(self, msg: dict) -> None:
         data = json.dumps(msg)
         for ws in list(self.clients):
-            try:
-                asyncio.ensure_future(ws.send_text(data))
-            except Exception:
-                self.clients.discard(ws)
+            async def _send(w=ws):
+                try:
+                    await w.send_text(data)
+                except Exception:
+                    self.clients.discard(w)      # client went away mid-send; not an error worth logging
+            asyncio.ensure_future(_send())
 
     def _raw_event(self, ev: dict) -> None:
         ev.setdefault("id", f"e{next(self._eseq)}")
