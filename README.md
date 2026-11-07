@@ -14,6 +14,20 @@ Built for the DoorDash track at NOVA (CMU, 7 Nov 2026). Front of house: order ti
 and pickup (ears + fire calls + Dasher handoff). Back of house: inventory, forecasting, waste
 (nose + stockout prediction + reorder drafts). One system, several pain points.
 
+## Fastest way to demo (no install)
+
+A hosted instance runs on the team VM: **https://novah.exe.xyz:8000/** (Board). Open it on the laptop,
+press **Listen**, and open the Sound Board link shown on the Ears page on a phone. The link is
+private to the exe.dev account by default; to let a judge's phone open it without logging in, run
+once from your own machine:
+
+```bash
+ssh exe.dev share set-public novah
+```
+
+Mic audio goes browser → VM over the websocket; nothing is recorded. The voice clips, the ear model
+and the nose classifier all run on the VM, so the laptop needs only a browser.
+
 ## Run it
 
 Quickest: one command builds the frontend if needed and serves everything on http://localhost:8000.
