@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { ControlBar } from "./components/ControlBar";
 import { TopNav, VIEWS, type View } from "./components/TopNav";
-import { useAudioStream } from "./hooks/useAudioStream";
+import { useAudioStream, type AudioStreamState } from "./hooks/useAudioStream";
 import { SousProvider, useSous } from "./hooks/useSous";
 import { useVoice } from "./hooks/useVoice";
 import { Board } from "./views/Board";
 import { Ears } from "./views/Ears";
 import { Kitchen } from "./views/Kitchen";
 import { Nose } from "./views/Nose";
+import { ScentRoom } from "./views/ScentRoom";
 import { Sounds } from "./views/Sounds";
 import { Storefront } from "./views/Storefront";
 
@@ -16,11 +17,11 @@ function viewFromHash(): View {
   return VIEWS.some((v) => v.id === h) ? h : "board";
 }
 
-/** Desktop/projector shell: nav, control bar, voice, this device's mic. */
-function Desktop({ view, onChangeView }: { view: View; onChangeView: (v: View) => void }) {
+/** Desktop/projector shell: nav, control bar, voice. This device's mic is owned by Shell so it keeps
+ * streaming when the laptop opens a full-screen page (Sounds, phone-width Scent room) and comes back. */
+function Desktop({ view, onChangeView, audio }: { view: View; onChangeView: (v: View) => void; audio: AudioStreamState }) {
   const { status, mock } = useSous();
   const voice = useVoice();
-  const audio = useAudioStream();
   return (
     <div className="h-full flex flex-col min-w-[1024px]">
       <TopNav view={view} onChange={onChangeView} />
@@ -39,6 +40,7 @@ function Desktop({ view, onChangeView }: { view: View; onChangeView: (v: View) =
         {view === "board" && <Board voice={voice} listening={audio.source === "mic"} />}
         {view === "ears" && <Ears audio={audio} />}
         {view === "nose" && <Nose />}
+        {view === "room" && <ScentRoom />}
         {view === "kitchen" && <Kitchen />}
         {view === "storefront" && <Storefront />}
       </main>
@@ -46,8 +48,25 @@ function Desktop({ view, onChangeView }: { view: View; onChangeView: (v: View) =
   );
 }
 
+const PHONE_QUERY = "(max-width: 767px)";
+
+/** True on a phone-width viewport (the judge's phone scanning the scent-room QR). */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia(PHONE_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(PHONE_QUERY);
+    const on = () => setNarrow(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return narrow;
+}
+
 function Shell() {
   const [view, setView] = useState<View>(viewFromHash);
+  const narrow = useNarrow();
+  const audio = useAudioStream();   // lives above the view switch: leaving the shell must not cut the mic
 
   useEffect(() => {
     const onHash = () => setView(viewFromHash());
@@ -69,7 +88,15 @@ function Shell() {
       </div>
     );
   }
-  return <Desktop view={view} onChangeView={change} />;
+  // Scent room on a phone: same minimal chrome; on the projector it sits inside the normal shell.
+  if (view === "room" && narrow) {
+    return (
+      <div className="min-h-full bg-ink-950">
+        <ScentRoom phone />
+      </div>
+    );
+  }
+  return <Desktop view={view} onChangeView={change} audio={audio} />;
 }
 
 export default function App() {

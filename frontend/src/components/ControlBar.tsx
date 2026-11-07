@@ -50,7 +50,7 @@ export function ControlBar({ voice, audio, onChangeView, status }: { voice: Voic
 
   return (
     <div className="flex items-center gap-2 px-5 py-2 border-b border-ink-800 bg-ink-950 shrink-0 flex-nowrap">
-      <button className={`btn ${listening ? "btn-on" : ""}`} onClick={() => (listening ? audio.stop() : void audio.startMic())} title={listening ? "Stop streaming this device's microphone" : "Stream this device's microphone to Sous (/ws/audio)"}>
+      <button className={`btn ${listening ? "btn-on" : ""}`} onClick={() => (listening ? audio.stop() : void audio.startMic())} title={listening ? "Stop streaming this device's microphone" : "Stream this device's microphone to Sous"}>
         {listening ? <Mic size={16} /> : <MicOff size={16} />} {listening ? "Listening" : "Listen"}
         <span className="text-[11px] font-normal text-zinc-400 normal-case">· {audio.location}</span>
       </button>

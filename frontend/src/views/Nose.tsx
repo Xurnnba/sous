@@ -1,9 +1,11 @@
-import { AlertTriangle, ArrowRight, Cpu } from "lucide-react";
+import { AlertTriangle, ArrowRight, Cpu, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Empty, Panel, Ring, Stat, UrgencyPill } from "../components/common";
+import { QrCode } from "../components/QrCode";
 import { useSous } from "../hooks/useSous";
 import { clockTime, HEATER_STEPS_C, pct, scenarioLabels, smellKindLabel, titleCase } from "../lib/format";
+import { usePhoneUrl } from "../lib/lanUrl";
 import type { Smell } from "../types";
 
 type Stage = { id: string; title: string; sub: string; live: (s: Smell) => boolean; note?: (s: Smell) => string | null };
@@ -11,7 +13,7 @@ type Stage = { id: string; title: string; sub: string; live: (s: Smell) => boole
 const STAGES: Stage[] = [
   { id: "sensor", title: "BME688 sensor", sub: "4-step heater sweep", live: (s) => s.device === "serial" || s.device === "http", note: (s) => (s.device === "replay" ? "replayed" : s.device === "none" ? "none" : s.sensor_id) },
   { id: "esp32", title: "ESP32", sub: "1 Hz JSON over Wi-Fi", live: (s) => s.device === "serial" || s.device === "http" },
-  { id: "ingest", title: "Ingest", sub: "/api/sensor/reading", live: (s) => s.device !== "none" },
+  { id: "ingest", title: "Ingest", sub: "hardware endpoint", live: (s) => s.device !== "none" },
   { id: "cal", title: "Calibration", sub: "baseline · RH slope", live: (s) => s.calibration.quality > 0, note: (s) => `${pct(s.calibration.quality)} · ${s.calibration.status}` },
   { id: "fp", title: "Fingerprint", sub: "log-ratios per step", live: (s) => !!s.ratios, note: (s) => (s.ratios ? s.ratios.map((r) => r.toFixed(2)).join(" / ") : null) },
   { id: "clf", title: "GBDT classifier", sub: "6 classes", live: (s) => !!s.probs, note: (s) => (s.probs ? `${winnerOf(s.probs)} ${pct(Math.max(...Object.values(s.probs)))}` : null) },
@@ -72,6 +74,7 @@ function Fingerprint({ ratios }: { ratios: number[] | null }) {
 export function Nose() {
   const { state, api } = useSous();
   const [busy, setBusy] = useState<string | null>(null);
+  const roomUrl = usePhoneUrl(api, "room");
   if (!state) return <Empty>Loading sensor status…</Empty>;
   const smell = state.senses.smell;
   const probs = smell.probs;
@@ -123,9 +126,11 @@ export function Nose() {
           </div>
           <div className="flex items-center gap-2">
             <span className={`pill border ${smell.device === "replay" ? "bg-warn/10 text-warn border-warn/25" : smell.device === "none" ? "bg-ink-800 text-zinc-500 border-ink-700" : "bg-ok/10 text-ok border-ok/25"}`}>device · {smell.device}</span>
-            <span className="pill bg-ink-800 text-zinc-400 border border-ink-700">
-              {smell.model.name} · {smell.model.features} features · acc {smell.model.accuracy.toFixed(2)}
-            </span>
+            {smell.model.features > 0 && (
+              <span className="pill bg-ink-800 text-zinc-400 border border-ink-700">
+                {smell.model.name} · {smell.model.features} features · acc {smell.model.accuracy.toFixed(2)}
+              </span>
+            )}
             <span className="pill bg-ink-800 text-zinc-400 border border-ink-700 num">{smell.sensor_id}</span>
           </div>
         </header>
@@ -252,7 +257,7 @@ export function Nose() {
           </Panel>
         </div>
 
-        <div className="grid grid-cols-[1.6fr_1fr] gap-4">
+        <div className="grid grid-cols-[1.5fr_1fr_0.85fr] gap-4">
           <Panel title="Trace · mean ratio" right={<span className="text-[11px] text-zinc-500">last 180 s · anomaly shaded</span>}>
             {trace.length < 2 ? (
               <Empty>No sensor samples yet. The trace fills at 1 Hz once a board or the replay is posting readings.</Empty>
@@ -280,7 +285,7 @@ export function Nose() {
             )}
           </Panel>
 
-          <Panel title="Simulator (no board today)" right={<span className="text-[11px] text-zinc-500">POST /api/smell/scenario</span>}>
+          <Panel title="Simulator (no board today)">
             <div className="grid grid-cols-2 gap-2">
               {scenarioLabels.map((s) => {
                 const active = smell.scenario === s.name;
@@ -293,6 +298,19 @@ export function Nose() {
               })}
             </div>
             <p className="text-xs text-zinc-500 mt-3">Each scenario replays heater sweeps through the hardware ingest path, so calibration, classifier, urgency and the Board are exercised exactly as with a real board.</p>
+          </Panel>
+
+          <Panel title="Scent room on your phone" right={<Smartphone size={14} className="text-zinc-500" />}>
+            <div className="flex flex-col items-center gap-2">
+              {roomUrl.source === "pending" ? <div className="rounded-lg bg-ink-800" style={{ width: 128, height: 128 }} /> : <QrCode text={roomUrl.url} size={128} />}
+              <a href={roomUrl.url} className="num text-[11px] text-zinc-400 hover:text-zinc-200 hover:underline break-all text-center">
+                {roomUrl.url.replace(/^https?:\/\//, "")}
+              </a>
+            </div>
+            <p className="text-xs text-zinc-400 mt-3">Scan to open the kitchen floor plan. Drag spoiled or fresh scent sources near the virtual noses and watch them classify the air and update inventory.</p>
+            <p className="text-[11px] text-zinc-500 mt-1.5">
+              {roomUrl.source === "lan" ? `This laptop's network address${roomUrl.ip ? ` (${roomUrl.ip})` : ""}` : roomUrl.source === "pending" ? "Looking up this laptop's LAN address…" : roomUrl.loopback ? "This page is on localhost and no network address was found, so a phone can't reach it." : "Using this page's own address."}
+            </p>
           </Panel>
         </div>
 

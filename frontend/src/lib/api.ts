@@ -1,4 +1,4 @@
-import type { ControlBody, HearingInjectKind, HostsResponse, Items, SensorReadingBody, SmellScenario, SoundClip, State } from "../types";
+import type { ControlBody, HearingInjectKind, HostsResponse, Items, RoomResponse, RoomSource, SensorReadingBody, SmellScenario, SoundClip, State } from "../types";
 
 // Thin REST client for every endpoint in CONTRACT.md. Each helper is replaceable in
 // mock mode (see mock/mockBackend.ts), so the UI never has to know which mode it is in.
@@ -22,6 +22,12 @@ export type SousApi = {
   hosts: () => Promise<HostsResponse>;
   /** Returns an MP3 blob when the server has a TTS provider; null on 204 (no ElevenLabs clip: show the line, don't speak it). */
   speak: (text: string) => Promise<Blob | null>;
+  /** Scent room (docs/SCENT_ROOM.md). */
+  room: () => Promise<RoomResponse>;
+  roomAdd: (kind: string, x: number, y: number) => Promise<RoomSource>;
+  roomMove: (id: string, x: number, y: number) => Promise<RoomSource>;
+  roomRemove: (id: string) => Promise<void>;
+  roomReset: () => Promise<void>;
 };
 
 async function request(method: string, path: string, body?: unknown): Promise<Response> {
@@ -59,6 +65,11 @@ export const httpApi: SousApi = {
     if (!type.includes("audio")) return null;
     return res.blob();
   },
+  room: () => request("GET", "/api/room").then((r) => r.json()),
+  roomAdd: (kind, x, y) => postJson("/api/room/source", { kind, x, y }).then((r) => r.json()),
+  roomMove: (id, x, y) => postJson(`/api/room/source/${encodeURIComponent(id)}/move`, { x, y }).then((r) => r.json()),
+  roomRemove: (id) => request("DELETE", `/api/room/source/${encodeURIComponent(id)}`).then(() => undefined),
+  roomReset: () => postJson("/api/room/reset").then(() => undefined),
 };
 
 export const isMockMode = (): boolean => new URLSearchParams(window.location.search).get("mock") === "1";

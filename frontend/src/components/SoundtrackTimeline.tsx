@@ -1,4 +1,4 @@
-import { kindColor } from "../lib/format";
+import { kindColor, soundLabel } from "../lib/format";
 import type { Event, SoundtrackTruth } from "../types";
 
 const LEGEND = ["ticket_burst", "fryer_alarm", "door_chime", "phone_ring", "clatter"];
@@ -38,11 +38,11 @@ export function SoundtrackTimeline({ truth, position, duration, detections, star
       <div className="flex flex-wrap gap-3 pt-1">
         {LEGEND.map((k) => (
           <span key={k} className="inline-flex items-center gap-1 text-[11px] text-zinc-500">
-            <span className={`w-1.5 h-1.5 rounded-full ${kindColor[k]}`} /> {k.replace("_", " ")}
+            <span className={`w-1.5 h-1.5 rounded-full ${kindColor[k]}`} /> {soundLabel(k)}
           </span>
         ))}
       </div>
-      {!truth && <p className="text-xs text-zinc-500">Ground-truth markers load from /api/demo/soundtrack.json.</p>}
+      {!truth && <p className="text-xs text-zinc-500">Ground-truth markers load with the soundtrack.</p>}
     </div>
   );
 }

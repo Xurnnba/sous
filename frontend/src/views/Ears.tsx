@@ -5,9 +5,9 @@ import { QrCode } from "../components/QrCode";
 import { SoundtrackTimeline } from "../components/SoundtrackTimeline";
 import type { AudioStreamState } from "../hooks/useAudioStream";
 import { useSous } from "../hooks/useSous";
-import type { SousApi } from "../lib/api";
-import { isLoopbackHost, MIC_LOCATIONS, soundBoardUrl, soundBoardUrlOn } from "../lib/device";
-import { clockTime, EVENT_SCORE_KEYS, INJECT_KINDS, kindColor, titleCase } from "../lib/format";
+import { MIC_LOCATIONS } from "../lib/device";
+import { usePhoneUrl } from "../lib/lanUrl";
+import { clockTime, EVENT_SCORE_KEYS, INJECT_KINDS, kindColor, soundLabel } from "../lib/format";
 import type { Event, HearingInjectKind, Mic as MicT } from "../types";
 
 const INJECT_ICON: Record<HearingInjectKind, typeof Bell> = { ticket_burst: Printer, fryer_alarm: Bell, door_chime: DoorOpen, phone_ring: Phone, clatter: Utensils };
@@ -66,7 +66,7 @@ function MicCard({ mic, isThisDevice, names }: { mic: MicT; isThisDevice: boolea
             <span className="num text-sm font-semibold">{Math.ceil(mic.teaching.remaining_s)}</span>
           </Ring>
           <div className="text-sm">
-            <div className="font-medium">Teaching “{titleCase(mic.teaching.label)}”</div>
+            <div className="font-medium">Teaching “{soundLabel(mic.teaching.label)}”</div>
             <div className="text-xs text-zinc-400">{mic.teaching.examples} examples so far — make the sound now</div>
           </div>
         </div>
@@ -74,7 +74,7 @@ function MicCard({ mic, isThisDevice, names }: { mic: MicT; isThisDevice: boolea
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <div className="label mb-1">Heard as (AudioSet)</div>
+          <div className="label mb-1">What the AI hears</div>
           <div className="space-y-1">
             {mic.top.length ? mic.top.slice(0, 3).map(([name, score]) => <ScoreBar key={name} label={name} value={score} color="bg-zinc-500" />) : <div className="text-xs text-zinc-500">no windows yet</div>}
           </div>
@@ -83,14 +83,14 @@ function MicCard({ mic, isThisDevice, names }: { mic: MicT; isThisDevice: boolea
           <div className="label mb-1">Kitchen events (zero-shot)</div>
           <div className="space-y-1">
             {EVENT_SCORE_KEYS.map((k) => (
-              <ScoreBar key={k} label={k.replace("_", " ")} value={mic.scores[k] ?? 0} color={kindColor[k] ?? "bg-zinc-500"} highlight={(mic.scores[k] ?? 0) > 0.3} />
+              <ScoreBar key={k} label={soundLabel(k)} value={mic.scores[k] ?? 0} color={kindColor[k] ?? "bg-zinc-500"} highlight={(mic.scores[k] ?? 0) > 0.3} />
             ))}
           </div>
         </div>
       </div>
       {Object.keys(mic.taught).filter((k) => k !== "_background").length > 0 && (
         <div className="text-[11px] text-zinc-400 num">
-          taught: {Object.entries(mic.taught).filter(([k]) => k !== "_background").map(([k, v]) => `${names[k] ?? titleCase(k)} ${v.toFixed(2)}`).join(" · ")}
+          taught: {Object.entries(mic.taught).filter(([k]) => k !== "_background").map(([k, v]) => `${names[k] ?? soundLabel(k)} ${v.toFixed(2)}`).join(" · ")}
         </div>
       )}
     </article>
@@ -104,7 +104,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
   const [teachError, setTeachError] = useState<string | null>(null);
   const teachingRef = useRef<{ label: string; mic: string } | null>(null);
   const startedAt = useRef<number | null>(null);
-  const boardUrl = useSoundBoardUrl(api);
+  const boardUrl = usePhoneUrl(api, "sounds");
 
   useEffect(() => {
     if (audio.source === "soundtrack") startedAt.current = Date.now();
@@ -126,7 +126,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
     setToast(
       proto
         ? { ok: true, text: `Learned ${proto.examples} example${proto.examples === 1 ? "" : "s"} of “${proto.name}”` }
-        : { ok: false, text: `Nothing captured for “${titleCase(t.label)}” — the sound was not loud enough above the room. Try again closer to the mic.` },
+        : { ok: false, text: `Nothing captured for “${soundLabel(t.label)}” — the sound was not loud enough above the room. Try again closer to the mic.` },
     );
     const h = window.setTimeout(() => setToast(null), 6000);
     return () => window.clearTimeout(h);
@@ -186,7 +186,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
 
         {/* LEFT: microphones */}
         <div className="flex flex-col gap-4">
-          <Panel title="Microphones" right={<span className="text-[11px] text-zinc-600">/ws/audio · 16 kHz Int16 · 250 ms frames</span>}>
+          <Panel title="Microphones">
             <div className="flex flex-col gap-3">
               {ears.mics.length === 0 && <Empty>No microphone connected. Tap Listen on this device, or open the sound board on a phone.</Empty>}
               {ears.mics.map((m) => (
@@ -222,7 +222,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
 
         {/* RIGHT: teach */}
         <div className="flex flex-col gap-4">
-          <Panel title="Teach Sous a sound" right={<span className="text-[11px] text-zinc-600">POST /api/ear/teach · 4 s</span>}>
+          <Panel title="Teach Sous a sound" right={<span className="text-[11px] text-zinc-500">takes 4 s</span>}>
             <p className="text-xs text-zinc-400 mb-3">
               Press a label, then make the sound for four seconds{teachMic ? ` into the ${teachMic.location} mic (${teachMic.mic})` : ""}. Sous memorises it as a prototype and recognises it from then on — what you taught beats the zero-shot guess.
             </p>
@@ -246,7 +246,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
                 <div>
                   <div className="text-base font-semibold">Make the sound now</div>
                   <div className="text-sm text-zinc-400">
-                    Teaching “{titleCase(teachingNow.label)}” · {teachingNow.examples} examples captured
+                    Teaching “{soundLabel(teachingNow.label)}” · {teachingNow.examples} examples captured
                   </div>
                 </div>
               </div>
@@ -257,7 +257,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
             <div className="mt-4">
               <div className="label mb-1.5">Learned sounds</div>
               {taught.length === 0 ? (
-                <div className="text-xs text-zinc-500">Nothing taught yet — Sous is running on zero-shot AudioSet scores alone.</div>
+                <div className="text-xs text-zinc-500">Nothing taught yet — Sous is using its built-in sound knowledge alone.</div>
               ) : (
                 <ul className="divide-y divide-ink-800">
                   {taught.map((p) => (
@@ -288,7 +288,7 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
               <div className="text-sm text-zinc-400">
                 <p>Scan to open the sound board. Tap a clip on the phone; this laptop listens and the board lights up when Sous hears it.</p>
                 <p className="text-[11px] text-zinc-500 mt-1.5">
-                  {boardUrl.source === "lan" ? `LAN address from /api/hosts${boardUrl.ip ? ` (${boardUrl.ip})` : ""}` : boardUrl.source === "pending" ? "Looking up this laptop's LAN address…" : boardUrl.loopback ? "This page is on localhost and /api/hosts returned no LAN address — a phone cannot reach this URL." : "Using this page's own address."}
+                  {boardUrl.source === "lan" ? `This laptop's network address${boardUrl.ip ? ` (${boardUrl.ip})` : ""}` : boardUrl.source === "pending" ? "Looking up this laptop's LAN address…" : boardUrl.loopback ? "This page is on localhost and no network address was found, so a phone can't reach it." : "Using this page's own address."}
                 </p>
               </div>
             </div>
@@ -353,45 +353,6 @@ export function Ears({ audio }: { audio: AudioStreamState }) {
   );
 }
 
-type BoardUrl = { url: string; source: "lan" | "page" | "pending"; ip?: string; loopback: boolean };
-
-// The LAN address does not change while the page is open: remember it so revisiting Ears is instant.
-let lanCache: BoardUrl | null = null;
-
-/** Phone-reachable sound-board URL: GET /api/hosts when the page is on localhost, else the page's own address. */
-function useSoundBoardUrl(api: SousApi): BoardUrl {
-  const loopback = isLoopbackHost();
-  const [value, setValue] = useState<BoardUrl>(() => lanCache ?? { url: soundBoardUrl(), source: loopback ? "pending" : "page", loopback });
-  useEffect(() => {
-    if (!loopback || lanCache) return;
-    let alive = true;
-    let timer: number | null = null;
-    const attempt = (n: number) => {
-      api
-        .hosts()
-        .then((r) => {
-          const h = r.hosts?.[0];
-          if (!alive) return;
-          if (h?.url) {
-            lanCache = { url: soundBoardUrlOn(h.url), source: "lan", ip: h.ip, loopback };
-            setValue(lanCache);
-          } else throw new Error("no LAN host");
-        })
-        .catch(() => {
-          if (!alive) return;
-          if (n < 3) timer = window.setTimeout(() => attempt(n + 1), 1500);
-          else setValue((v) => ({ ...v, source: "page" }));
-        });
-    };
-    attempt(0);
-    return () => {
-      alive = false;
-      if (timer !== null) window.clearTimeout(timer);
-    };
-  }, [api, loopback]);
-  return value;
-}
-
 function EventRow({ e }: { e: Event }) {
   const d = e.data ?? {};
   const top = Array.isArray(d.top) && Array.isArray(d.top[0]) ? String((d.top[0] as unknown[])[0]) : null;
@@ -405,7 +366,7 @@ function EventRow({ e }: { e: Event }) {
       <td className="py-1.5 px-2 first:pl-0 capitalize text-zinc-400">{typeof d.location === "string" ? d.location : "—"}</td>
       <td className="py-1.5 px-2 first:pl-0">
         <span className="inline-flex items-center gap-1.5 text-zinc-200">
-          <span className={`w-1.5 h-1.5 rounded-full ${kindColor[e.kind] ?? "bg-zinc-400"}`} /> {e.kind.replace(/_/g, " ")}
+          <span className={`w-1.5 h-1.5 rounded-full ${kindColor[e.kind] ?? "bg-zinc-400"}`} /> {soundLabel(e.kind)}
         </span>
       </td>
       <td className="py-1.5 px-2 first:pl-0">

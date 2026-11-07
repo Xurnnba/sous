@@ -736,6 +736,18 @@ export function createMockBackend(emit: (m: WsMessage) => void): MockBackend {
     sounds: async () => ({ clips: SOUND_CLIPS.map((c) => ({ ...c })) }),
     hosts: async () => ({ port: Number(window.location.port) || 80, hosts: [] }), // mock: no LAN discovery; the page falls back to window.location
     speak: async () => null, // mock has no TTS provider -> lines are shown, not spoken
+    // The scent room needs the real nose pipeline; the mock does not simulate it.
+    room: async () => {
+      throw new Error("scent room needs the backend");
+    },
+    roomAdd: async () => {
+      throw new Error("scent room needs the backend");
+    },
+    roomMove: async () => {
+      throw new Error("scent room needs the backend");
+    },
+    roomRemove: async () => undefined,
+    roomReset: async () => undefined,
   };
 
   return {

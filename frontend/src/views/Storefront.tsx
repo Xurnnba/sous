@@ -1,19 +1,20 @@
 import { ArrowLeftRight, PackagePlus, Tag } from "lucide-react";
 import { useState } from "react";
-import { Empty, Tip } from "../components/common";
+import { Empty } from "../components/common";
 import { useSous } from "../hooks/useSous";
 import { money2 } from "../lib/format";
 import type { MenuItem } from "../types";
 
+// Keyed by the backend's menu ids (backend/sous/sim/menu_data.py).
 const ART: Record<string, string> = {
-  "m-avo-toast": "from-lime-700/60 to-emerald-900/25",
-  "m-guac": "from-green-700/60 to-emerald-950/25",
-  "m-burger": "from-amber-700/60 to-orange-950/25",
-  "m-fries": "from-yellow-600/60 to-amber-900/25",
-  "m-chicken": "from-orange-700/60 to-red-950/25",
-  "m-salad": "from-green-600/60 to-teal-900/25",
-  "m-tomato-toast": "from-red-700/60 to-rose-950/25",
-  "m-shake": "from-amber-500/60 to-yellow-900/25",
+  avo_toast: "from-lime-800/40 to-emerald-950/20",
+  tomato_toast: "from-red-800/40 to-rose-950/20",
+  chicken_burrito: "from-orange-800/40 to-red-950/20",
+  carnitas_tacos: "from-amber-800/40 to-orange-950/20",
+  guac_chips: "from-green-800/40 to-emerald-950/20",
+  breakfast_burrito: "from-yellow-800/40 to-amber-950/20",
+  fries: "from-yellow-700/40 to-amber-950/20",
+  horchata: "from-stone-600/40 to-stone-900/20",
 };
 
 function Card({ item, byId, onRestore }: { item: MenuItem; byId: Map<string, MenuItem>; onRestore: (id: string) => Promise<void> }) {
@@ -24,8 +25,9 @@ function Card({ item, byId, onRestore }: { item: MenuItem; byId: Map<string, Men
   const subFor = item.substitute_for ? byId.get(item.substitute_for)?.name ?? item.substitute_for : null;
   const art = ART[item.id] ?? "from-zinc-700/60 to-zinc-900/25";
   return (
-    <Tip text={item.reason}>
-      <article className={`relative w-full rounded-lg overflow-hidden border bg-ink-800 transition-all duration-700 ${item.available ? "border-ink-700 opacity-100 scale-100" : "border-ink-700/60 opacity-45 grayscale scale-[0.98]"}`}>
+    <article className={`relative w-full rounded-lg overflow-hidden border bg-ink-800 ${item.available ? "border-ink-700" : "border-ink-700/60"}`}>
+      {/* Fade only the content of an unavailable item, so the "We got more" control stays full colour. */}
+      <div className={`transition-all duration-700 ${item.available ? "opacity-100" : "opacity-45 grayscale"}`}>
         <div className={`relative h-28 bg-gradient-to-br ${art} flex items-end p-3`}>
           {item.emoji && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ background: "radial-gradient(circle at 50% 45%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 38%, transparent 70%)" }}>
@@ -42,7 +44,7 @@ function Card({ item, byId, onRestore }: { item: MenuItem; byId: Map<string, Men
             ))}
           </div>
         </div>
-        <div className="p-4">
+        <div className={`p-4 ${item.available ? "" : "pb-14"}`}>
           <div className="flex items-start justify-between gap-3">
             <h3 className="text-base font-medium leading-tight text-zinc-200">{item.name}</h3>
             <div className="text-right shrink-0">
@@ -51,6 +53,7 @@ function Card({ item, byId, onRestore }: { item: MenuItem; byId: Map<string, Men
             </div>
           </div>
           <p className="text-xs text-zinc-400 mt-1">{item.ingredients.map((i) => i.label ?? i.name).join(" · ")}</p>
+          {item.reason && !subFor && <p className="text-xs text-zinc-400 mt-2">{item.available ? "" : "Hidden: "}{item.reason}</p>}
           <div className="flex gap-2 flex-wrap mt-3 min-h-[22px]">
             {discount > 0 && (
               <span className="pill bg-ok/10 text-ok gap-1">
@@ -64,7 +67,8 @@ function Card({ item, byId, onRestore }: { item: MenuItem; byId: Map<string, Men
             )}
           </div>
         </div>
-        {!item.available && (
+      </div>
+      {!item.available && (
           <>
             <div className="absolute top-2 right-2 pill bg-ink-900/80 text-zinc-300 pointer-events-none">Unavailable</div>
             <div className="absolute inset-x-0 bottom-0 p-3 flex justify-end bg-gradient-to-t from-black/50 to-transparent">
@@ -86,9 +90,8 @@ function Card({ item, byId, onRestore }: { item: MenuItem; byId: Map<string, Men
               </button>
             </div>
           </>
-        )}
-      </article>
-    </Tip>
+      )}
+    </article>
   );
 }
 

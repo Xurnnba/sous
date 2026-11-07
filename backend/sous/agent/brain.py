@@ -56,6 +56,7 @@ class Brain:
         self._hearing_log: deque[dict] = deque(maxlen=20)
         self._last_speech: dict[str, float] = {}
         self._handled_anomaly: Optional[str] = None
+        self._pushed_for: dict[str, list[str]] = {}     # ingredient -> menu ids discounted because it was turning
 
     # ------------------------------------------------------------------ plumbing
     def _bg(self, coro: Awaitable) -> None:
@@ -181,7 +182,11 @@ class Brain:
         if kind in ("device_connected", "device_offline", "relocated"):
             return
         if kind == "voc_clear":
-            closed = self.items.resolve(lambda i: i["sense"] == "smell" and i.get("location") == loc)
+            if d.get("source") == "room":
+                self._room_clear(d, loc)
+                return
+            closed = self.items.resolve(lambda i: i["sense"] == "smell" and i.get("location") == loc
+                                        and i["evidence"].get("source") != "room")
             if closed:
                 self._bg(self.say(f"Air's clear at the {spoken_loc(loc)}."))
             return
@@ -190,42 +195,124 @@ class Brain:
         self._handled_anomaly = ev.get("id")
         self._bg(self._handle_anomaly(kind, d, loc))
 
+    def room_reset(self) -> None:
+        """Scent room cleared (or the server restarted, so its air is gone): close every room-sourced smell
+        item and put stock the room flagged back to fresh, ending its push discounts. Quiet: no voice."""
+        closed = self.items.resolve(lambda i: i["sense"] == "smell" and i["evidence"].get("source") == "room")
+        w = self.world
+        for ing in {i["evidence"].get("ingredient") for i in closed} | set(self._pushed_for):
+            inv = w.inventory.get(ing or "")
+            if inv is None:
+                continue
+            if inv.freshness in ("turning", "watch"):
+                inv.freshness = "fresh"
+            for mid in self._pushed_for.pop(inv.name, []):
+                m = w.menu.get(mid)
+                if m is not None and m.discount_pct == PUSH_DISCOUNT_PCT and m.substitute_for is None:
+                    w.set_discount(mid, 0, None)
+
+    def _room_clear(self, d: dict, loc: str) -> None:
+        """A scent-room nose cleared. Resolve only that plume's items (same ingredient, or same kind at the
+        same location for non-ingredient smells); if another nose still smells it, wait for that one.
+        A turning/watch ingredient whose smell is gone goes back to fresh and loses its push discount."""
+        if d.get("still_active"):
+            return
+        ing, prev = d.get("ingredient"), d.get("previous")
+        if ing:
+            pred = lambda i: (i["sense"] == "smell" and i["evidence"].get("source") == "room"
+                              and i["evidence"].get("ingredient") == ing)
+        else:
+            pred = lambda i: (i["sense"] == "smell" and i["evidence"].get("source") == "room"
+                              and i["kind"] == prev and i.get("location") == loc)
+        closed = self.items.resolve(pred)
+        w = self.world
+        inv = w.inventory.get(ing or "")
+        if inv is not None and inv.freshness in ("turning", "watch"):
+            was = inv.freshness
+            inv.freshness = "fresh"
+            undone = []
+            for mid in self._pushed_for.pop(inv.name, []):
+                m = w.menu.get(mid)
+                if m is not None and m.discount_pct == PUSH_DISCOUNT_PCT and m.substitute_for is None:
+                    w.set_discount(mid, 0, None)
+                    undone.append(m.name)
+            name = pretty(inv.name)
+            self.act("freshness_restored",
+                     f"{name.capitalize()} smells fine again: back to fresh"
+                     + (f", ended the push on {', '.join(undone)}" if undone else ""),
+                     ingredient=inv.name, was=was, items=undone, nose_id=d.get("nose_id"))
+            self._bg(self.say(f"Air's clear by the {name}. Marking it fresh"
+                              + (" and ending the discount." if undone else ".")))
+        elif closed:
+            self._bg(self.say(f"Air's clear at the {spoken_loc(loc)}."))
+
     async def _handle_anomaly(self, kind: str, d: dict, loc: str) -> None:
         w = self.world
+        room = d.get("source") == "room"
         evidence = {"location": loc, "confidence": d.get("confidence"), "probs": d.get("probs"),
                     "fingerprint": d.get("fingerprint"), "single_channel": d.get("single_channel")}
-        perishable = w.most_perishable_in("walk-in")
+        if room:
+            evidence.update(source="room", nose_id=d.get("nose_id"), ingredient=d.get("ingredient"),
+                            est_xy=d.get("est_xy"))
+        inferred = w.inventory.get(d.get("ingredient") or "")
+        # room events key per kind+ingredient (two walk-in noses on one plume update one item)
+        rkey = (lambda base: f"{base}:{inferred.name}" if (room and inferred) else
+                (f"{base}:{loc}" if room else base))
+        if room and not inferred and kind in ("spoilage_produce", "spoilage_protein"):
+            # a room plume away from any matching shelf: say where, blame nothing
+            where = (d.get("zone_label") or spoken_loc(loc)).lower()
+            what = "Produce turning" if kind == "spoilage_produce" else "Spoiling protein"
+            self._item(title=f"{what} smell near the {where}: nothing like that is shelved there, take a look",
+                       detail="The noses place the plume away from any stocked bin of that kind, so Sous is not "
+                              "flagging an ingredient. Find the source (a dropped tray, the bin, a delivery).",
+                       urgency="today", sense="smell", kind=kind, key=rkey(kind), location=loc, evidence=evidence,
+                       speak=f"Nose smells {what.lower()} near the {where}. Someone take a look.")
+            return
+        perishable = inferred or w.most_perishable_in("walk-in")
+        how = (f" The plume is nearest the {pretty(inferred.name)} bin (inferred from the noses' readings and "
+               f"where stock is shelved).") if inferred else ""
         if kind == "spoilage_produce" and perishable:
-            w.mark_turning(perishable.name)
-            for m in w.items_using(perishable.name):
-                if m.available:
-                    w.set_discount(m.id, PUSH_DISCOUNT_PCT, f"{pretty(perishable.name)} is turning, moving it today")
-            w.metrics["est_waste_saved_usd"] += perishable.on_hand * 1.9
-            self.act("menu_discount", f"Promoting {pretty(perishable.name)} dishes at {PUSH_DISCOUNT_PCT}% to move stock",
-                     ingredient=perishable.name, pct=PUSH_DISCOUNT_PCT)
-            self.act("reorder_draft", f"Skip tomorrow's {pretty(perishable.name)} order", supplier=REORDER_SUPPLIER,
-                     ingredient=perishable.name, qty=0, unit=perishable.unit, note="nose: produce turning")
-            self._item(title=f"{pretty(perishable.name).capitalize()} is turning: use it today",
-                       detail=f"Fermentation signature in the walk-in. Sous discounted every {pretty(perishable.name)} dish "
+            name = pretty(perishable.name)
+            already = room and perishable.freshness == "turning"
+            if not already:
+                w.mark_turning(perishable.name)
+                pushed = []
+                for m in w.items_using(perishable.name):
+                    if m.available:
+                        w.set_discount(m.id, PUSH_DISCOUNT_PCT, f"{name} is turning, moving it today")
+                        pushed.append(m.id)
+                self._pushed_for.setdefault(perishable.name, []).extend(pushed)
+                w.metrics["est_waste_saved_usd"] += perishable.on_hand * 1.9
+                if pushed:
+                    self.act("menu_discount", f"Promoting {name} dishes at {PUSH_DISCOUNT_PCT}% to move stock",
+                             ingredient=perishable.name, pct=PUSH_DISCOUNT_PCT, items=pushed)
+                self.act("reorder_draft", f"Skip tomorrow's {name} order", supplier=REORDER_SUPPLIER,
+                         ingredient=perishable.name, qty=0, unit=perishable.unit, note="nose: produce turning")
+            self._item(title=f"{name.capitalize()} is turning: use it today",
+                       detail=f"Fermentation signature in the walk-in.{how} Sous discounted every {name} dish "
                               f"{PUSH_DISCOUNT_PCT}% and drafted a zero reorder for tomorrow. Check the tray at close.",
-                       urgency="today", sense="smell", kind=kind, key="spoilage_produce", location=loc,
+                       urgency="today", sense="smell", kind=kind, key=rkey("spoilage_produce"), location=loc,
                        auto={"type": "menu_discount",
-                             "summary": f"{PUSH_DISCOUNT_PCT}% off {pretty(perishable.name)} dishes, reorder skipped"},
+                             "summary": f"{PUSH_DISCOUNT_PCT}% off {name} dishes, reorder skipped"},
                        evidence=evidence,
-                       speak=f"Nose says the {pretty(perishable.name)} in the walk-in is turning. Pushing it today at "
+                       speak=f"Nose says the {name} in the walk-in is turning. Pushing it today at "
                              f"{PUSH_DISCOUNT_PCT} percent off and skipping tomorrow's order.")
         elif kind == "spoilage_protein":
-            protein = next((i for i in w.inventory.values() if i.name in ("carnitas", "chicken")), None)
-            if protein:
+            protein = inferred or next((i for i in w.inventory.values() if i.name in ("carnitas", "chicken")), None)
+            if protein and (not room or protein.freshness == "fresh"):
                 w.mark_turning(protein.name, "watch")
-            self._item(title=f"Protein in the walk-in smells off: check the {pretty(protein.name) if protein else 'meat'} before service",
-                       detail="Amine signature (spoiling protein). Sous does not auto-act on food safety; a person decides.",
-                       urgency="today", sense="smell", kind=kind, key="spoilage_protein", location=loc, evidence=evidence,
-                       speak="Nose is picking up spoiling protein in the walk-in. Someone check the meat before service.")
+            what = pretty(protein.name) if protein else "meat"
+            self._item(title=f"Protein in the walk-in smells off: check the {what} before service",
+                       detail=f"Amine signature (spoiling protein).{how} Sous does not auto-act on food safety; a person decides.",
+                       urgency="today", sense="smell", kind=kind, key=rkey("spoilage_protein"), location=loc,
+                       evidence=evidence,
+                       speak=(f"Nose is picking up spoiling protein in the walk-in, near the {what}. "
+                              f"Someone check it before service." if inferred else
+                              "Nose is picking up spoiling protein in the walk-in. Someone check the meat before service."))
         elif kind == "burning":
             self._item(title="Something is burning on the line: check station 2 now",
                        detail="Fast, large VOC rise with a temperature jump. Not a cleaning product.",
-                       urgency="now", sense="smell", kind=kind, key="burning", location=loc, evidence=evidence,
+                       urgency="now", sense="smell", kind=kind, key=rkey("burning"), location=loc, evidence=evidence,
                        speak="Something's burning on the line. Check station 2 now.", expires_s=240.0)
         elif kind == "oil_degraded":
             w.mark_turning("fry_oil", "spoiled")
@@ -233,7 +320,7 @@ class Brain:
                      unit="L", note="nose: oil degraded")
             self._item(title="Change the fryer oil before the dinner rush",
                        detail="Slow aldehyde creep at the fry station: the oil is past its life. Reorder drafted.",
-                       urgency="next", sense="smell", kind=kind, key="oil", location=loc,
+                       urgency="next", sense="smell", kind=kind, key=rkey("oil"), location=loc,
                        auto={"type": "reorder_draft", "summary": "20 L fry oil drafted"}, evidence=evidence,
                        speak="Fryer oil's past its life. Change it before the dinner rush. Oil's cheaper than a bad review.")
         elif kind in ("cleaning", "door_open"):
@@ -241,7 +328,7 @@ class Brain:
                               else "Walk-in door left open a while"),
                        detail=("Oxidising signature with a humidity jump; not food. No action." if kind == "cleaning"
                                else "Humidity and temperature transient; nothing to act on unless it keeps happening."),
-                       urgency="later", sense="smell", kind=kind, key=kind, location=loc, evidence=evidence,
+                       urgency="later", sense="smell", kind=kind, key=rkey(kind), location=loc, evidence=evidence,
                        speak=("Nose spiked in the walk-in, looks like cleaner. Ignoring it for two minutes."
                               if kind == "cleaning" else None), expires_s=120.0)
         else:

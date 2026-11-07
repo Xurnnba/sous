@@ -222,7 +222,42 @@ export type State = {
   voice: { last_line: string; muted: boolean };
   actions: Action[];
   providers: Providers;
+  /** Scent room (docs/SCENT_ROOM.md); absent when the backend has no room. */
+  room?: RoomState | null;
 };
+
+// --- scent room (docs/SCENT_ROOM.md) -------------------------------------------
+
+export type RoomZoneKind = "cold" | "dry" | "hot" | "prep" | "front";
+export type RoomZone = { id: string; label: string; x: number; y: number; w: number; h: number; kind: RoomZoneKind };
+export type RoomDoor = { zone: string; x: number; y1: number; y2: number };
+export type RoomBinCategory = "produce" | "protein" | "dairy" | "dry" | "line";
+export type RoomBin = { id: string; ingredient: string; label: string; x: number; y: number; zone: string; category: RoomBinCategory };
+export type RoomNoseSpec = { id: string; label: string; x: number; y: number; zone: string; location: string };
+export type RoomLayout = { zones: RoomZone[]; doors: RoomDoor[]; bins: RoomBin[]; noses: RoomNoseSpec[] };
+
+export type RoomPaletteKind = "spoiled_produce" | "spoiling_protein" | "burnt_pan" | "old_fry_oil" | "cleaner_spray" | "fresh_produce" | "fresh_protein" | (string & {});
+export type RoomPaletteEntry = { kind: RoomPaletteKind; label: string; gas: string | null; good: boolean; sustained: boolean; desc: string };
+
+export type RoomSource = { id: string; kind: RoomPaletteKind; label: string; x: number; y: number; age_s: number; emission: number; bin: string | null };
+export type RoomNoseStatus = "calibrating" | "nominal" | "anomaly";
+export type RoomNose = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  location: string;
+  status: RoomNoseStatus;
+  deviation: number;
+  ratios: number[];
+  prediction: { label: string; confidence: number } | null;
+  anomaly: { kind: string; label: string; confidence: number; urgency: SmellUrgency } | null;
+  air: Record<string, number>;
+};
+export type RoomInference = { t: string | number; nose_id: string; kind: string; label: string; est_x: number; est_y: number; ingredient: string | null; summary: string };
+export type RoomInventoryItem = { name: string; label: string; freshness: Freshness; on_hand: number; unit: string; location: string };
+export type RoomState = { sources: RoomSource[]; noses: RoomNose[]; inferences: RoomInference[]; inventory: RoomInventoryItem[] };
+export type RoomResponse = { layout: RoomLayout; palette: RoomPaletteEntry[]; state: RoomState };
 
 export type ItemChange = "added" | "updated" | "closed";
 

@@ -32,7 +32,7 @@ export function NoiseMeter({ db, active }: { db: number; active: boolean }) {
       </div>
       <div className="flex justify-between text-[11px] text-zinc-500 mt-1">
         <span>Room noise</span>
-        <span className="num text-zinc-400">{active ? `${db.toFixed(0)} dBFS` : "mic off"}</span>
+        <span className="num text-zinc-400">{active ? `loudness ${db.toFixed(0)} dB` : "mic off"}</span>
       </div>
     </div>
   );

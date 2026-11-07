@@ -1,11 +1,12 @@
-import { ChefHat, Ear, LayoutList, Smartphone, Store, Wind } from "lucide-react";
+import { ChefHat, Ear, LayoutList, Map as MapIcon, Smartphone, Store, Wind } from "lucide-react";
 
-export type View = "board" | "ears" | "nose" | "kitchen" | "storefront" | "sounds";
+export type View = "board" | "ears" | "nose" | "kitchen" | "storefront" | "sounds" | "room";
 
 export const VIEWS: { id: View; label: string; icon: typeof ChefHat }[] = [
   { id: "board", label: "Board", icon: LayoutList },
   { id: "ears", label: "Ears", icon: Ear },
   { id: "nose", label: "Nose", icon: Wind },
+  { id: "room", label: "Scent room", icon: MapIcon },
   { id: "kitchen", label: "Orders", icon: ChefHat },
   { id: "storefront", label: "Storefront", icon: Store },
   { id: "sounds", label: "Sounds", icon: Smartphone },

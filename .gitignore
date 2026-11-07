@@ -7,3 +7,4 @@ frontend/dist/
 *.log
 backend/data/items.json
 .env
+backend/voice_cache/*.mp3

@@ -91,13 +91,22 @@ export const scenarioLabels: { name: SmellScenario; label: string }[] = [
   { name: "stop", label: "Stop" },
 ];
 
-export const INJECT_KINDS: { kind: HearingInjectKind; label: string }[] = [
-  { kind: "ticket_burst", label: "Ticket burst" },
-  { kind: "fryer_alarm", label: "Fryer alarm" },
-  { kind: "door_chime", label: "Door chime" },
-  { kind: "phone_ring", label: "Phone ring" },
-  { kind: "clatter", label: "Clatter" },
-];
+/** One display name per sound kind, used everywhere (matches the backend's PRETTY labels). */
+export const SOUND_LABEL: Record<string, string> = {
+  ticket_burst: "Ticket printer",
+  fryer_alarm: "Fryer alarm",
+  door_chime: "Door chime",
+  phone_ring: "Phone ringing",
+  clatter: "Clatter",
+  noise_spike: "Noise spike",
+  speech: "Voices",
+  frying: "Frying",
+};
+export const soundLabel = (kind: string): string => SOUND_LABEL[kind] ?? titleCase(kind);
+
+export const INJECT_KINDS: { kind: HearingInjectKind; label: string }[] = (
+  ["ticket_burst", "fryer_alarm", "door_chime", "phone_ring", "clatter"] as HearingInjectKind[]
+).map((kind) => ({ kind, label: SOUND_LABEL[kind] }));
 
 /** Zero-shot kitchen-event score keys shown as bars on the Ears page, in display order. */
 export const EVENT_SCORE_KEYS = ["fryer_alarm", "door_chime", "ticket_burst", "clatter", "phone_ring"] as const;

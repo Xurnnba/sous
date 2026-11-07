@@ -1,4 +1,5 @@
-import type { Ears, Items, Smell, SmellUrgency, State } from "../types";
+import { SOUND_LABEL } from "./format";
+import type { Ears, Items, RoomState, Smell, SmellUrgency, State } from "../types";
 
 /**
  * The backend is being rewritten to CONTRACT v2 while the v1 process may still be the one
@@ -6,13 +7,7 @@ import type { Ears, Items, Smell, SmellUrgency, State } from "../types";
  * `state.senses.ears` and the 4-step smell fields without null-guarding everywhere.
  */
 
-export const DEFAULT_LABELS: Ears["labels"] = [
-  { id: "fryer_alarm", name: "Fryer alarm" },
-  { id: "door_chime", name: "Door chime" },
-  { id: "ticket_burst", name: "Ticket printer" },
-  { id: "phone_ring", name: "Phone ring" },
-  { id: "clatter", name: "Clatter" },
-];
+export const DEFAULT_LABELS: Ears["labels"] = ["fryer_alarm", "door_chime", "ticket_burst", "phone_ring", "clatter"].map((id) => ({ id, name: SOUND_LABEL[id] }));
 
 export const EMPTY_ITEMS: Items = { open: [], recent_closed: [], counts: { now: 0, next: 0, today: 0, later: 0 }, total_created: 0 };
 
@@ -90,6 +85,19 @@ export function normaliseState(raw: unknown): State {
       ears: (providers.ears as State["providers"]["ears"]) ?? (ears.mics.length ? "ready" : "unloaded"),
       nose: typeof providers.nose === "string" ? providers.nose : smell.device,
     },
+    room: normaliseRoom(r.room),
+  };
+}
+
+/** Scent room state; null when the snapshot has none (older backend or mock). */
+export function normaliseRoom(raw: unknown): RoomState | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Loose;
+  return {
+    sources: Array.isArray(r.sources) ? (r.sources as RoomState["sources"]) : [],
+    noses: Array.isArray(r.noses) ? (r.noses as RoomState["noses"]) : [],
+    inferences: Array.isArray(r.inferences) ? (r.inferences as RoomState["inferences"]) : [],
+    inventory: Array.isArray(r.inventory) ? (r.inventory as RoomState["inventory"]) : [],
   };
 }
 

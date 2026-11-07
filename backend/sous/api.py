@@ -22,6 +22,7 @@ from .senses.ear import embedder, sounds
 from .senses.ear.streams import EarManager
 from .senses.nose.physics import Simulator as NoseSimulator
 from .senses.nose.pipeline import NosePipeline
+from .senses.nose.room import ScentRoom
 from .sim.world import World
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
@@ -40,10 +41,13 @@ class Hub:
         self.world = World(on_event=self._world_event)
         self.nose = NosePipeline(on_event=self._smell_event)
         self.nose_sim = NoseSimulator(self.nose)
+        # scent-room demo: four virtual noses sharing the single nose's model (loaded lazily on first step)
+        self.room = ScentRoom(self.world, on_event=self._smell_event, model_provider=self.nose._ensure_model)
         self.ears = EarManager(DATA_DIR, on_event=self._hearing_event)
         self.items = ItemStore(DATA_DIR / "items.json", on_change=self._item_change)
         self.brain = Brain(self.world, self.nose, self.ears, self.items, emit_action=self._action,
                            speak=self._speak, emit_event=self._raw_event)
+        self.brain.room_reset()      # room air does not survive a restart; neither do its Board items
         self.stress = 0.0
         self._loop_task: Optional[asyncio.Task] = None
 
@@ -110,6 +114,7 @@ class Hub:
                 "ears": ears,
                 "smell": self.nose.snapshot(),
             },
+            "room": self.room.snapshot(),
             "items": self.items.snapshot(),
             "voice": {"last_line": self.brain.last_line, "muted": self.brain.muted},
             "actions": self.brain.actions,
@@ -130,6 +135,11 @@ class Hub:
                 last_sim = now
                 self.nose_sim.step()
                 self.nose.tick()
+                try:
+                    self.room.step()
+                except Exception as e:  # the demo room must never stop the main loop
+                    self._raw_event({"sense": "smell", "kind": "error", "label": "scent room error",
+                                     "detail": str(e), "severity": "warn"})
                 self.ears.tick()
                 self.items.tick()
                 self.stress = self._compute_stress()
@@ -148,6 +158,7 @@ class Hub:
         self.nose_sim = NoseSimulator(self.nose)
         if os.environ.get("SOUS_NOSE_AUTOSTART", "1") == "1":
             self.nose_sim.set_scenario("nominal")
+        self.room.reset_all()        # sources and inference log go; room noses keep calibration
         self.items.clear()
         self.brain = Brain(self.world, self.nose, self.ears, self.items, emit_action=self._action,
                            speak=self._speak, emit_event=self._raw_event)
@@ -200,6 +211,17 @@ class Teach(BaseModel):
 
 class Speak(BaseModel):
     text: str
+
+
+class RoomSource(BaseModel):
+    kind: str
+    x: float
+    y: float
+
+
+class RoomMove(BaseModel):
+    x: float
+    y: float
 
 
 # ---------------------------------------------------------------- REST
@@ -314,6 +336,44 @@ async def sensor_reading(r: SensorReading, request: Request) -> dict:
     hub.nose.ingest(reading)
     snap = hub.nose.snapshot()
     return {"ok": True, "status": snap.get("status"), "ratios": snap.get("ratios")}
+
+
+# ---- scent room (docs/SCENT_ROOM.md)
+@app.get("/api/room")
+async def room_get() -> dict:
+    return {"layout": hub.room.layout(), "palette": hub.room.palette(), "state": hub.room.snapshot()}
+
+
+@app.post("/api/room/source")
+async def room_add(s: RoomSource) -> dict:
+    try:
+        return hub.room.add_source(s.kind, s.x, s.y)
+    except ValueError:
+        raise HTTPException(400, f"unknown kind {s.kind}")
+    except OverflowError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/room/source/{sid}/move")
+async def room_move(sid: str, m: RoomMove) -> dict:
+    src = hub.room.move_source(sid, m.x, m.y)
+    if src is None:
+        raise HTTPException(404, "no such source")
+    return src
+
+
+@app.delete("/api/room/source/{sid}")
+async def room_remove(sid: str) -> dict:
+    if not hub.room.remove_source(sid):
+        raise HTTPException(404, "no such source")
+    return {"ok": True}
+
+
+@app.post("/api/room/reset")
+async def room_reset() -> dict:
+    hub.room.reset()
+    hub.brain.room_reset()
+    return {"ok": True}
 
 
 # ---- ears
